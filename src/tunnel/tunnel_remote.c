@@ -41,6 +41,8 @@
 
 #ifdef TEST_TUNNEL_REMOTE
 
+#define TUNNEL_REMOTE_MAX_CLIENT (16)
+
 typedef enum {
    REMOTE_CLIENT_STATE_NONE = 0,
    REMOTE_CLIENT_STATE_ACCEPT,  /* AUTH successful */
@@ -72,7 +74,6 @@ typedef struct {
 } tun_remote_chann_t;
 
 typedef struct {
-   int data_mark;
    remote_client_state_t state;
    chann_t *tcpin;
    buf_t *bufin;
@@ -434,7 +435,6 @@ _remote_tcpin_cb(chann_event_t *e) {
             assert(0);
          }
 
-         c->data_mark++;
 
          if (tcmd.cmd == TUNNEL_CMD_ECHO) {
             _remote_send_echo(c);
@@ -602,7 +602,7 @@ static void
 _remote_listen_cb(chann_event_t *e) {
    if (e->event == MNET_EVENT_ACCEPT) {
       tun_remote_t *tun = _tun_remote();
-      if (lst_count(tun->clients_lst) < 6) {
+      if (lst_count(tun->clients_lst) < TUNNEL_REMOTE_MAX_CLIENT) {
          _remote_client_create(e->r);
       }
    }
