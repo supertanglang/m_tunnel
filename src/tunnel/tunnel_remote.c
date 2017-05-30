@@ -341,6 +341,9 @@ _remote_send_connect_result(tun_remote_client_t *c, int chann_id, int magic, int
                      chann_id, magic, addr_str, port, d[0], d[1], d[2], d[3], port);
          }
 #endif
+      } else {
+         _err("fail to get connect result %d:%d\n", chann_id, magic);
+         data[hlen] = 0;
       }
    }
 
@@ -582,7 +585,7 @@ _remote_tcpout_cb(chann_event_t *e) {
       }
    }
    else if (e->event == MNET_EVENT_DISCONNECT) {
-      _verbose("chann %d disconnect\n", rc->chann_id);
+      _verbose("chann %d:%d disconnect\n", rc->chann_id, rc->magic);
       if (rc->state == REMOTE_CHANN_STATE_NONE) {
          _remote_send_connect_result(c, rc->chann_id, rc->magic, 0);
       }
@@ -592,7 +595,7 @@ _remote_tcpout_cb(chann_event_t *e) {
       }
    }
    else if (e->event == MNET_EVENT_CLOSE) {
-      _verbose("chann %d close, mnet\n", rc->chann_id);
+      _verbose("chann %d:%d close, mnet\n", rc->chann_id, rc->magic);
       _remote_send_close(c, rc, 1);
       _remote_chann_close(rc);
    }

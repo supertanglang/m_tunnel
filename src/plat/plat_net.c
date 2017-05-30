@@ -492,14 +492,14 @@ _evt_add(chann_t *n, int set) {
       } else if (set == MNET_SET_WRITE) {
          kev->filter = EVFILT_WRITE;
       }
-      kev->flags = EV_ADD;
+      kev->flags = EV_ADD | EV_EOF;
       kev->udata = (void*)n;
       chg->count += 1;
       _log("kq add chann %p filter %d\n", n, kev->filter);
 #else
       kev->data.ptr = (void*)n;
       if (set == MNET_SET_READ) {
-         kev->events = EPOLLIN;
+         kev->events = EPOLLIN | EPOLLRDHUP;
       } else if (set == MNET_SET_WRITE) {
          kev->events = EPOLLOUT;
       }
@@ -574,8 +574,9 @@ _evt_poll(int microseconds) {
          chann_t *n = (chann_t*)kev->udata;
 
          /* check error first */
-         if (kev->flags & EV_ERROR) {
-            _err("chann %p got error: %d\n", n, kev->data);
+         if (kev->flags & (EV_ERROR | EV_EOF)) {
+            if (kev->flags & EV_ERROR) _err("chann %p got error: %d\n", n, kev->data);
+            else _log("chann %p got eof: %d\n", n, kev->data);
             n->state = CHANN_STATE_CLOSING;
             _chann_event(n, MNET_EVENT_DISCONNECT, NULL);
          }
@@ -651,8 +652,9 @@ _evt_poll(int microseconds) {
          chann_t *n = (chann_t*)kev->data.ptr;
 
          /* check error first */
-         if (kev->events & (EPOLLERR | EPOLLHUP)) {
-            _err("chann %p got error: %x\n", n, kev->events);
+         if (kev->events & (EPOLLERR | EPOLLRDHUP | EPOLLHUP)) {
+            if (kev->events & EPOLLERR) _err("chann %p got error: %x\n", n, kev->events);
+            else _log("chann %p got eof: %x\n", n, kev->events);
             n->state = CHANN_STATE_CLOSING;
             _chann_event(n, MNET_EVENT_DISCONNECT, NULL);
          }

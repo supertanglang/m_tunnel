@@ -9,7 +9,7 @@
 #define MNET_H
 
 #ifndef MNET_BUF_SIZE
-#define MNET_BUF_SIZE (64*1024) /* 64kb */
+#define MNET_BUF_SIZE (32*1024) /* 32kb */
 #endif
 
 typedef enum {
