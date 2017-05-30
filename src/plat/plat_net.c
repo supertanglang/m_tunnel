@@ -640,7 +640,7 @@ _evt_poll(int microseconds) {
 
 #else  /* LINUX */
 
-   nfd = epoll_wait(ss->kq, evt->array, evt->size, microseconds<=0 ? 0 : microseconds);
+   nfd = epoll_wait(ss->kq, evt->array, evt->size, microseconds);
    if (nfd<0 && errno!=EINTR) {
       _err("epoll wait return %d, errno:%d\n", nfd, errno);
       return -1;
