@@ -43,7 +43,7 @@
 
 #include <assert.h>
 
-#define _err(...) _mlog("dsn", D_ERROR, __VA_ARGS__)
+#define _err(...) _mlog("dns", D_ERROR, __VA_ARGS__)
 #define _info(...) _mlog("dns", D_INFO, __VA_ARGS__)
 
 #ifndef DEF_TUNNEL_DNS_COUNT

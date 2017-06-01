@@ -117,6 +117,10 @@ struct s_mchann {
    int64_t bytes_send;
    int64_t bytes_recv;
    int active_send_event;
+#if !defined(MNET_OS_WIN)
+   struct s_mchann *del_next;   /* for delete */
+   uint32_t epoll_events;
+#endif
 };
 
 struct s_event {
@@ -135,6 +139,7 @@ typedef struct s_mnet {
    int kq;                      // kqueue or epoll fd
    struct s_event chg;
    struct s_event evt;
+   chann_t *del_channs;
 #endif
 } mnet_t;
 
@@ -495,19 +500,22 @@ _evt_add(chann_t *n, int set) {
       kev->flags = EV_ADD | EV_EOF;
       kev->udata = (void*)n;
       chg->count += 1;
-      _log("kq add chann %p filter %d\n", n, kev->filter);
+      _log("kq add chann %p filter %x\n", n, kev->filter);
 #else
+      uint32_t events = 0;
       kev->data.ptr = (void*)n;
       if (set == MNET_SET_READ) {
-         kev->events = EPOLLIN | EPOLLRDHUP;
+         events = n->epoll_events | EPOLLIN | EPOLLRDHUP | EPOLLET;
       } else if (set == MNET_SET_WRITE) {
-         kev->events = EPOLLOUT;
+         events = n->epoll_events | EPOLLOUT | EPOLLRDHUP | EPOLLET;
       }
-      if (epoll_ctl(ss->kq, EPOLL_CTL_ADD, n->fd, kev) < 0) {
+      kev->events = events;
+      if (epoll_ctl(ss->kq, (n->epoll_events ? EPOLL_CTL_MOD : EPOLL_CTL_ADD), n->fd, kev) < 0) {
          _err("epoll fail to add chann %p with filter %d, errno %d\n", n, set, errno);
          return 0;
       }
-      _log("epoll add chann %p events %d\n", n, kev->events);
+      n->epoll_events = events;
+      _log("epoll add chann %p events %x\n", n, events);
 #endif
       return 1;
    }
@@ -530,23 +538,37 @@ _evt_del(chann_t *n, int set) {
       }
       kev->flags = EV_DELETE;
       kev->udata = n;
-      _log("kq del chann %p filter %d\n", n, kev->filter);
+      _log("kq del chann %p filter %x\n", n, kev->filter);
 #else
+      uint32_t events = 0;
       kev->data.ptr = (void*)n;
       if (set == MNET_SET_READ) {
-         kev->events = EPOLLIN;
+         events = n->epoll_events & ~EPOLLIN;
       } else if (set == MNET_SET_WRITE) {
-         kev->events = EPOLLOUT;
+         events = n->epoll_events & ~EPOLLOUT;
       }
-      if (epoll_ctl(ss->kq, EPOLL_CTL_MOD, n->fd, kev) < 0) {
+      kev->events = events;
+      if (epoll_ctl(ss->kq, events ? EPOLL_CTL_MOD : EPOLL_CTL_DEL, n->fd, kev) < 0) {
          _err("epoll fail to add chann %p with filter %d, errno %d\n", n, set, errno);
          return 0;
       }
-      _log("epoll dell chann %p events %d\n", n, kev->events);
+      n->epoll_events = events;
+      _log("epoll del chann %p events %x\n", n, events);
 #endif
       return 1;
    }
    return 0;
+}
+
+static void
+_evt_closing(chann_t *n) {
+   if (n->state > CHANN_STATE_CLOSING) {
+      mnet_t *ss = _gmnet();
+      n->state = CHANN_STATE_CLOSING;
+
+      n->del_next = ss->del_channs;
+      ss->del_channs = n;
+   }
 }
 
 static int
@@ -577,7 +599,7 @@ _evt_poll(int microseconds) {
          if (kev->flags & (EV_ERROR | EV_EOF)) {
             if (kev->flags & EV_ERROR) _err("chann %p got error: %d\n", n, kev->data);
             else _log("chann %p got eof: %d\n", n, kev->data);
-            n->state = CHANN_STATE_CLOSING;
+            _evt_closing(n);
             _chann_event(n, MNET_EVENT_DISCONNECT, NULL);
          }
 
@@ -604,7 +626,7 @@ _evt_poll(int microseconds) {
                   n->state = CHANN_STATE_CONNECTED;
                   _chann_event(n, MNET_EVENT_CONNECT, NULL);
                } else {
-                  n->state = CHANN_STATE_CLOSING;
+                  _evt_closing(n);
                   _chann_event(n, MNET_EVENT_DISCONNECT, NULL);
                }
                break;
@@ -627,14 +649,13 @@ _evt_poll(int microseconds) {
                break;
             }
 
-            default:
+            case CHANN_STATE_CLOSING:
                break;
-         }
-         
-         if (n->state == CHANN_STATE_CLOSING) {
-            _chann_event(n, MNET_EVENT_CLOSE, NULL);
-            _chann_close(ss, n);
-            _chann_destroy(ss, n);
+
+            default:
+               _err("invalid chann:%p, state:%d, events:%x, del_channs:%p\n",
+                    n, n->state, n->del_next, kev->filter, ss->del_channs);
+               break;
          }
       }
    }
@@ -655,7 +676,7 @@ _evt_poll(int microseconds) {
          if (kev->events & (EPOLLERR | EPOLLRDHUP | EPOLLHUP)) {
             if (kev->events & EPOLLERR) _err("chann %p got error: %x\n", n, kev->events);
             else _log("chann %p got eof: %x\n", n, kev->events);
-            n->state = CHANN_STATE_CLOSING;
+            _evt_closing(n);
             _chann_event(n, MNET_EVENT_DISCONNECT, NULL);
          }
 
@@ -677,11 +698,12 @@ _evt_poll(int microseconds) {
                int opt=0; socklen_t opt_len=sizeof(opt);
                getsockopt(n->fd, SOL_SOCKET, SO_ERROR, &opt, &opt_len);
                if (opt == 0) {
-                  _evt_del(n, MNET_SET_READ);
+                  _evt_del(n, MNET_SET_WRITE);
+                  _evt_add(n, MNET_SET_READ);
                   n->state = CHANN_STATE_CONNECTED;
                   _chann_event(n, MNET_EVENT_CONNECT, NULL);
                } else {
-                  n->state = CHANN_STATE_CLOSING;
+                  _evt_closing(n);
                   _chann_event(n, MNET_EVENT_DISCONNECT, NULL);
                }
                break;
@@ -703,19 +725,29 @@ _evt_poll(int microseconds) {
                }
                break;
             }
+
+            case CHANN_STATE_CLOSING:
+               break;
                
             default:
+               _err("invalid chann:%p, state:%d, events:%x, del_channs:%p\n",
+                    n, n->state, n->del_next, kev->events, ss->del_channs);
                break;
-         }
-
-         if (n->state == CHANN_STATE_CLOSING) {
-            _chann_event(n, MNET_EVENT_CLOSE, NULL);
-            _chann_close(ss, n);
-            _chann_destroy(ss, n);
          }
       }
    }
 #endif
+
+   chann_t *n = ss->del_channs;
+   while (n) {
+      chann_t *nn = n->del_next;
+      _chann_event(n, MNET_EVENT_CLOSE, NULL);
+      _chann_close(ss, n);
+      _chann_destroy(ss, n);
+      n = nn;
+   }
+   ss->del_channs = NULL;
+
    return ss->chann_count;
 }
 #endif /* WIN */
@@ -870,12 +902,16 @@ mnet_chann_open(chann_type_t type) {
 
 void mnet_chann_close(chann_t *n) {
    if ( n ) {
+#if defined(MNET_OS_WIN)
       if (n->state == CHANN_STATE_CLOSING) {
          _chann_close(_gmnet(), n);
          _chann_destroy(_gmnet(), n);
       } else {
          n->state = CHANN_STATE_CLOSING;
       }
+#else
+      _evt_closing(n);
+#endif
    }
 }
 
@@ -994,7 +1030,11 @@ int mnet_chann_recv(chann_t *n, void *buf, int len) {
       }
       if (ret <= 0) {
          if (errno != EWOULDBLOCK) {
+#if defined(MNET_OS_WIN)
             n->state = CHANN_STATE_CLOSING;
+#else
+            _evt_closing(n);
+#endif
          }
       } else {
          n->bytes_recv += ret;
@@ -1017,8 +1057,11 @@ int mnet_chann_send(chann_t *n, void *buf, int len) {
          ret = _chann_send(n, buf, len);
          if (ret <= 0) {
             if (errno != EWOULDBLOCK) {
-               /* perror("chann send: "); */
+#if defined(MNET_OS_WIN)
                n->state = CHANN_STATE_CLOSING;
+#else
+               _evt_closing(n);
+#endif
             }
          } else if (ret < len) {
             _rwb_cache(prh, ((char*)buf) + ret, len - ret);
