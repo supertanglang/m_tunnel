@@ -9,7 +9,7 @@
 #define MNET_H
 
 #ifndef MNET_BUF_SIZE
-#define MNET_BUF_SIZE (32*1024) /* 32kb */
+#define MNET_BUF_SIZE (64*1024) /* 64kb */
 #endif
 
 typedef enum {
@@ -20,7 +20,7 @@ typedef enum {
 
 typedef enum {
    CHANN_STATE_CLOSED,
-   CHANN_STATE_CLOSING,
+   CHANN_STATE_DISCONNCT,
    CHANN_STATE_CONNECTING,
    CHANN_STATE_CONNECTED,
    CHANN_STATE_LISTENING,
@@ -31,7 +31,7 @@ typedef enum {
    MNET_EVENT_SEND,         /* socket send buf empty, need set active */
    MNET_EVENT_CLOSE,        /* socket close */
    MNET_EVENT_ACCEPT,       /* tcp accept */
-   MNET_EVENT_CONNECT,      /* tcp connect */
+   MNET_EVENT_CONNECTED,    /* tcp connected */
    MNET_EVENT_DISCONNECT,   /* tcp disconnect */
 } mnet_event_type_t;
 
@@ -60,6 +60,8 @@ int mnet_chann_state(chann_t *n);
 
 int mnet_chann_connect(chann_t *n, const char *host, int port);
 #define mnet_chann_to(n,h,p) mnet_chann_connect(n,h,p) /* for UDP */
+
+void mnet_chann_disconnect(chann_t *n);
 
 int mnet_chann_listen_ex(chann_t *n, const char *host, int port, int backlog);
 #define mnet_chann_listen(n, p) mnet_chann_listen_ex(n, NULL, p, 5)

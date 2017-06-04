@@ -113,7 +113,6 @@ void* mm_realloc_ex(void *p, unsigned long sz, char *fname, int line) {
       _lock(mh->lock);
       if (mh->head == m) { mh->head = nm; }
       mh->size = mh->size - nm->size + sz + sizeof(*nm);
-      _unlock(mh->lock);
 
       if (nm->prev) nm->prev->next = nm;
       if (nm->next) nm->next->prev = nm;
@@ -122,6 +121,7 @@ void* mm_realloc_ex(void *p, unsigned long sz, char *fname, int line) {
       nm->line = (unsigned short)line;
       nm->size = sz + sizeof(*nm);
       nm->magic = _MAGIC_MARK;
+      _unlock(mh->lock);
       return _MEM_TO_PTR(nm);
    }
    return mm_malloc_ex(sz, fname, line);

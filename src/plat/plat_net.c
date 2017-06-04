@@ -10,14 +10,14 @@
 #include <ws2tcpip.h>
 #include <windows.h>
 #pragma comment(lib, "ws2_32.lib")
-#define MNET_OS_WIN
+#define MNET_OS_WIN 1
 
 #else  // WIN
 
 #ifdef __APPLE__
-#define MNET_OS_MACOX
+#define MNET_OS_MACOX 1
 #else
-#define MNET_OS_LINUX
+#define MNET_OS_LINUX 1
 #endif  // __APPLE__
 
 #include <sys/types.h>
@@ -35,7 +35,7 @@
 #include <signal.h>
 #include <ctype.h>
 
-#ifdef MNET_OS_MACOX
+#if MNET_OS_MACOX
 #include <sys/types.h>
 #include <sys/event.h>
 #include <sys/time.h>
@@ -58,13 +58,13 @@ typedef struct epoll_event mevent_t;
 #include <assert.h>
 
 #define _err(...) _mlog("mnet", D_ERROR, __VA_ARGS__)
-//#define _log(...) _mlog("mnet", D_VERBOSE, __VA_ARGS__)
-#define _log(...)
+#define _log(...) _mlog("mnet", D_VERBOSE, __VA_ARGS__)
+/* #define _log(...) */
 
 #define _MIN_OF(a, b) (((a) < (b)) ? (a) : (b))
 #define _MAX_OF(a, b) (((a) > (b)) ? (a) : (b))
 
-#ifdef MNET_OS_WIN
+#if MNET_OS_WIN
 
 #define close(a) closesocket(a)
 #define getsockopt(a,b,c,d,e) getsockopt((a),(b),(c),(char*)(d),(e))
@@ -81,8 +81,6 @@ typedef struct epoll_event mevent_t;
 #define EWOULDBLOCK WSAEWOULDBLOCK
 
 #endif  /* WIN */
-
-#define MNET_ARRAY_SIZE 64
 
 enum {
    MNET_SET_READ,
@@ -117,7 +115,8 @@ struct s_mchann {
    int64_t bytes_send;
    int64_t bytes_recv;
    int active_send_event;
-#if !defined(MNET_OS_WIN)
+#if (MNET_OS_MACOX | MNET_OS_LINUX)
+   struct s_mchann *del_prev;   /* for delete */
    struct s_mchann *del_next;   /* for delete */
    uint32_t epoll_events;
 #endif
@@ -133,7 +132,7 @@ typedef struct s_mnet {
    int init;
    int chann_count;
    chann_t *channs;
-#ifdef MNET_OS_WIN
+#if MNET_OS_WIN
    fd_set fdset[MNET_SET_MAX];  // select
 #else
    int kq;                      // kqueue or epoll fd
@@ -154,7 +153,7 @@ _gmnet() {
  */
 static chann_t* _chann_accept(mnet_t *ss, chann_t *n);
 static void _chann_destroy(mnet_t *ss, chann_t *n);
-static void _chann_close(mnet_t *ss, chann_t *n);
+static void _chann_close_socket(mnet_t *ss, chann_t *n);
 static void _chann_event(chann_t *n, mnet_event_type_t event, chann_t *r);
 static int _chann_send(chann_t *n, void *buf, int len);
 
@@ -253,7 +252,7 @@ _rwb_destroy(rwb_head_t *h) {
  */
 static int
 _set_nonblocking(int fd) {
-#ifdef MNET_OS_WIN
+#if MNET_OS_WIN
    u_long imode = 1;
    int ret = ioctlsocket(fd, FIONBIO, (u_long*)&imode);
    if (ret == NO_ERROR) return 0;
@@ -300,7 +299,7 @@ _listen(int fd, int backlog) {
 }
 
 
-#ifdef MNET_OS_WIN
+#if MNET_OS_WIN
 
 /* select op
  */
@@ -390,15 +389,13 @@ _select_poll(int microseconds) {
                getsockopt(n->fd, SOL_SOCKET, SO_ERROR, &opt, &opt_len);
                if (opt == 0) {
                   n->state = CHANN_STATE_CONNECTED;
-                  _chann_event(n, MNET_EVENT_CONNECT, NULL);
+                  _chann_event(n, MNET_EVENT_CONNECTED, NULL);
                } else {
-                  n->state = CHANN_STATE_CLOSING;
-                  _chann_event(n, MNET_EVENT_DISCONNECT, NULL);
+                  _chann_close_socket(ss, n);
                }
             }
             if ( _select_isset(se, n->fd) ) {
-               n->state = CHANN_STATE_CLOSING;
-               _chann_event(n, MNET_EVENT_DISCONNECT, NULL);
+               _chann_close_socket(ss, n);
             }
             break;
 
@@ -421,9 +418,9 @@ _select_poll(int microseconds) {
          default:
             break;
       }
-      if (n->state == CHANN_STATE_CLOSING) {
+      if (n->state == CHANN_STATE_DISCONNCT) {
+         _chann_event(n, MNET_EVENT_DISCONNECT, NULL);
          _chann_event(n, MNET_EVENT_CLOSE, NULL);
-         _chann_close(ss, n);
          _chann_destroy(ss, n);
       }
       n = nn;
@@ -435,20 +432,87 @@ _select_poll(int microseconds) {
 
 /* kqueue/epoll op
  */
+#if MNET_OS_MACOX
+#define _KEV_CHG_ARRAY_SIZE 256
+#define _KEV_EVT_ARRAY_SIZE 256
+
+#define _KEV_FLAG_ERROR  EV_ERROR
+#define _KEV_FLAG_HUP    EV_EOF
+#define _KEV_EVENT_READ  EVFILT_READ
+#define _KEV_EVENT_WRITE EVFILT_WRITE
+
+#else  /* Linux */
+
+#define _KEV_CHG_ARRAY_SIZE 4
+#define _KEV_EVT_ARRAY_SIZE 256
+
+#define _KEV_FLAG_ERROR  EPOLLERR
+#define _KEV_FLAG_HUP    (EPOLLRDHUP | EPOLLHUP)
+#define _KEV_EVENT_READ  EPOLLIN
+#define _KEV_EVENT_WRITE EPOLLOUT
+#endif
+
+/* kev */
+static inline void*
+_kev_opaque(mevent_t *kev) {
+#if MNET_OS_MACOX
+   return kev->udata;
+#else
+   return kev->data.ptr;
+#endif
+}
+
+static inline int
+_kev_flags(mevent_t *kev, int flags) {
+#if MNET_OS_MACOX
+   return (kev->flags & flags);
+#else
+   return (kev->events & flags);
+#endif
+}
+
+static inline int
+_kev_events(mevent_t *kev, int events) {
+#if MNET_OS_MACOX
+   return (kev->filter == events);
+#else
+   return (kev->events & events);
+#endif
+}
+
+static inline int
+_kev_get_events(mevent_t *kev) {
+#if MNET_OS_MACOX
+   return kev->filter;
+#else
+   return kev->events;
+#endif
+}
+
+static inline int
+_kev_errno(mevent_t *kev) {
+#if MNET_OS_MACOX
+   return kev->data;
+#else
+   return kev->events;
+#endif   
+}
+
+/* event */
 static int
 _evt_init(void) {
    mnet_t *ss = _gmnet();
    if (ss->kq <= 0) {
-#ifdef MNET_OS_MACOX
+#if MNET_OS_MACOX
       ss->kq = kqueue();
       _log("evt init with kqueue %d\n", ss->kq);
 #else
-      ss->kq = epoll_create(MNET_ARRAY_SIZE);
+      ss->kq = epoll_create(_KEV_EVT_ARRAY_SIZE);
       _log("evt init with epoll %d\n", ss->kq);
 #endif
-      ss->chg.size = MNET_ARRAY_SIZE;
+      ss->chg.size = _KEV_CHG_ARRAY_SIZE;
       ss->chg.array = (mevent_t*)mm_malloc(sizeof(mevent_t) * ss->chg.size);
-      ss->evt.size = MNET_ARRAY_SIZE;
+      ss->evt.size = _KEV_EVT_ARRAY_SIZE;
       ss->evt.array = (mevent_t*)mm_malloc(sizeof(mevent_t) * ss->evt.size);
       return 1;
    }
@@ -477,6 +541,7 @@ _evt_check_expand(struct s_event *ev) {
       int nsize = ev->size * 2;
       ev->array = (mevent_t*)mm_realloc(ev->array, sizeof(mevent_t) * nsize);
       if (ev->array) {
+         _log("evt expand %p to %d\n", ev, nsize);
          ev->size = nsize;
       }
       return (ev->array != NULL);
@@ -490,7 +555,7 @@ _evt_add(chann_t *n, int set) {
    if ( _evt_check_expand(chg) ) {
       mevent_t *kev = &chg->array[chg->count];
       memset(kev, 0, sizeof(mevent_t));
-#ifdef MNET_OS_MACOX
+#if MNET_OS_MACOX
       kev->ident = n->fd;
       if (set == MNET_SET_READ) {
          kev->filter = EVFILT_READ;
@@ -505,9 +570,9 @@ _evt_add(chann_t *n, int set) {
       uint32_t events = 0;
       kev->data.ptr = (void*)n;
       if (set == MNET_SET_READ) {
-         events = n->epoll_events | EPOLLIN | EPOLLRDHUP | EPOLLET;
+         events = n->epoll_events | EPOLLIN | EPOLLRDHUP | EPOLLHUP;
       } else if (set == MNET_SET_WRITE) {
-         events = n->epoll_events | EPOLLOUT | EPOLLRDHUP | EPOLLET;
+         events = n->epoll_events | EPOLLOUT | EPOLLRDHUP | EPOLLHUP;
       }
       kev->events = events;
       if (epoll_ctl(ss->kq, (n->epoll_events ? EPOLL_CTL_MOD : EPOLL_CTL_ADD), n->fd, kev) < 0) {
@@ -529,7 +594,7 @@ _evt_del(chann_t *n, int set) {
    if ( _evt_check_expand(chg) ) {
       mevent_t *kev = &chg->array[chg->count];
       memset(kev, 0, sizeof(mevent_t));
-#ifdef MNET_OS_MACOX
+#if MNET_OS_MACOX
       kev->ident = n->fd;
       if (set == MNET_SET_READ) {
          kev->filter = EVFILT_READ;
@@ -537,7 +602,8 @@ _evt_del(chann_t *n, int set) {
          kev->filter = EVFILT_WRITE;         
       }
       kev->flags = EV_DELETE;
-      kev->udata = n;
+      kev->udata = (void*)n;
+      chg->count += 1;
       _log("kq del chann %p filter %x\n", n, kev->filter);
 #else
       uint32_t events = 0;
@@ -560,31 +626,22 @@ _evt_del(chann_t *n, int set) {
    return 0;
 }
 
-static void
-_evt_closing(chann_t *n) {
-   if (n->state > CHANN_STATE_CLOSING) {
-      mnet_t *ss = _gmnet();
-      n->state = CHANN_STATE_CLOSING;
-
-      n->del_next = ss->del_channs;
-      ss->del_channs = n;
-   }
-}
-
 static int
 _evt_poll(int microseconds) {
    int nfd = 0;
    mnet_t *ss = _gmnet();
    struct s_event *evt = &ss->evt;
-
-#ifdef MNET_OS_MACOX
    struct s_event *chg = &ss->chg;
-   struct timespec tsp;
 
+#if MNET_OS_MACOX
+   struct timespec tsp;
    tsp.tv_sec = 0;
    tsp.tv_nsec = (long)microseconds * 1000;
-
    nfd = kevent(ss->kq, chg->array, chg->count, evt->array, evt->size, microseconds<=0 ? NULL : &tsp);
+#else
+   nfd = epoll_wait(ss->kq, evt->array, evt->size, microseconds); /* LINUX */
+#endif
+
    if (nfd<0 && errno!=EINTR) {
       _err("kevent return %d, errno:%d\n", nfd, errno);
       return -1;
@@ -592,15 +649,16 @@ _evt_poll(int microseconds) {
       chg->count = 0;
 
       for (int i=0; i<nfd; i++) {
-         struct kevent *kev = &evt->array[i];
-         chann_t *n = (chann_t*)kev->udata;
+         mevent_t *kev = &evt->array[i];
+         chann_t *n = (chann_t*)_kev_opaque(kev);
+
+         _log("chann %p fd %d event, state %d\n", n, n->fd, n->state);
 
          /* check error first */
-         if (kev->flags & (EV_ERROR | EV_EOF)) {
-            if (kev->flags & EV_ERROR) _err("chann %p got error: %d\n", n, kev->data);
-            else _log("chann %p got eof: %d\n", n, kev->data);
-            _evt_closing(n);
-            _chann_event(n, MNET_EVENT_DISCONNECT, NULL);
+         if ( _kev_flags(kev, (_KEV_FLAG_ERROR | _KEV_FLAG_HUP)) ) {
+            if (_kev_flags(kev, _KEV_FLAG_ERROR)) _err("chann %p got error: %d\n", n, _kev_errno(kev));
+            else _log("chann %p got eof: %d\n", n, _kev_errno(kev));
+            _chann_close_socket(ss, n);
          }
 
          switch ( n->state ) {
@@ -624,18 +682,17 @@ _evt_poll(int microseconds) {
                   _evt_del(n, MNET_SET_WRITE);
                   _evt_add(n, MNET_SET_READ);
                   n->state = CHANN_STATE_CONNECTED;
-                  _chann_event(n, MNET_EVENT_CONNECT, NULL);
+                  _chann_event(n, MNET_EVENT_CONNECTED, NULL);
                } else {
-                  _evt_closing(n);
-                  _chann_event(n, MNET_EVENT_DISCONNECT, NULL);
+                  _chann_close_socket(ss, n);
                }
                break;
             }
 
             case CHANN_STATE_CONNECTED: {
-               if (kev->filter == EVFILT_READ) {
+               if ( _kev_events(kev, _KEV_EVENT_READ) ) {
                   _chann_event(n, MNET_EVENT_RECV, NULL);                  
-               } else if (kev->filter == EVFILT_WRITE) {
+               } else if ( _kev_events(kev, _KEV_EVENT_WRITE) ) {
                   rwb_head_t *prh = &n->rwb_send;
                   if (_rwb_count(prh) > 0) {
                      int ret=0, len=0;
@@ -649,100 +706,22 @@ _evt_poll(int microseconds) {
                break;
             }
 
-            case CHANN_STATE_CLOSING:
+            case CHANN_STATE_DISCONNCT:
                break;
 
             default:
                _err("invalid chann:%p, state:%d, events:%x, del_channs:%p\n",
-                    n, n->state, n->del_next, kev->filter, ss->del_channs);
+                    n, n->state, n->del_next, _kev_get_events(kev), ss->del_channs);
                break;
          }
       }
    }
-
-#else  /* LINUX */
-
-   nfd = epoll_wait(ss->kq, evt->array, evt->size, microseconds);
-   if (nfd<0 && errno!=EINTR) {
-      _err("epoll wait return %d, errno:%d\n", nfd, errno);
-      return -1;
-   } else {
-
-      for (int i=0; i<nfd; i++) {
-         struct epoll_event *kev = &evt->array[i];
-         chann_t *n = (chann_t*)kev->data.ptr;
-
-         /* check error first */
-         if (kev->events & (EPOLLERR | EPOLLRDHUP | EPOLLHUP)) {
-            if (kev->events & EPOLLERR) _err("chann %p got error: %x\n", n, kev->events);
-            else _log("chann %p got eof: %x\n", n, kev->events);
-            _evt_closing(n);
-            _chann_event(n, MNET_EVENT_DISCONNECT, NULL);
-         }
-
-         switch ( n->state ) {
-            case CHANN_STATE_LISTENING: {
-               if (n->type == CHANN_TYPE_STREAM) {
-                  chann_t *c = _chann_accept(ss, n);
-                  if (c) {
-                     _chann_event(n, MNET_EVENT_ACCEPT, c);
-                     _evt_add(c, MNET_SET_READ);
-                  }
-               } else {
-                  _chann_event(n, MNET_EVENT_RECV, NULL);
-               }
-               break;
-            }
-
-            case CHANN_STATE_CONNECTING: {
-               int opt=0; socklen_t opt_len=sizeof(opt);
-               getsockopt(n->fd, SOL_SOCKET, SO_ERROR, &opt, &opt_len);
-               if (opt == 0) {
-                  _evt_del(n, MNET_SET_WRITE);
-                  _evt_add(n, MNET_SET_READ);
-                  n->state = CHANN_STATE_CONNECTED;
-                  _chann_event(n, MNET_EVENT_CONNECT, NULL);
-               } else {
-                  _evt_closing(n);
-                  _chann_event(n, MNET_EVENT_DISCONNECT, NULL);
-               }
-               break;
-            }
-
-            case CHANN_STATE_CONNECTED: {
-               if (kev->events & EPOLLIN) {
-                  _chann_event(n, MNET_EVENT_RECV, NULL);
-               } else if (kev->events & EPOLLOUT) {
-                  rwb_head_t *prh = &n->rwb_send;
-                  if (_rwb_count(prh) > 0) {
-                     int ret=0, len=0;
-                     char *buf = _rwb_drain_param(prh, &len);
-                     ret = _chann_send(n, buf, len);
-                     if (ret > 0) _rwb_drain(prh, ret);
-                  } else if ( n->active_send_event ) {
-                     _chann_event(n, MNET_EVENT_SEND, NULL);
-                  }
-               }
-               break;
-            }
-
-            case CHANN_STATE_CLOSING:
-               break;
-               
-            default:
-               _err("invalid chann:%p, state:%d, events:%x, del_channs:%p\n",
-                    n, n->state, n->del_next, kev->events, ss->del_channs);
-               break;
-         }
-      }
-   }
-#endif
 
    chann_t *n = ss->del_channs;
    while (n) {
       chann_t *nn = n->del_next;
+      _chann_event(n, MNET_EVENT_DISCONNECT, NULL);
       _chann_event(n, MNET_EVENT_CLOSE, NULL);
-      _chann_close(ss, n);
       _chann_destroy(ss, n);
       n = nn;
    }
@@ -813,10 +792,19 @@ _chann_send(chann_t *n, void *buf, int len) {
 }
 
 void
-_chann_close(mnet_t *ss, chann_t *n) {
-   close(n->fd);
-   n->state = CHANN_STATE_CLOSED;
-   /* _log("chann close fd %d\n", n->fd); */
+_chann_close_socket(mnet_t *ss, chann_t *n) {
+   if (n->state > CHANN_STATE_DISCONNCT) {
+#if (MNET_OS_MACOX | MNET_OS_LINUX)
+      if (ss->del_channs) {
+         ss->del_channs->del_prev = n;
+      }
+      n->del_next = ss->del_channs;
+      ss->del_channs = n;
+#endif
+      n->state = CHANN_STATE_DISCONNCT;
+      close(n->fd);
+      _log("chann close fd %d\n", n->fd);
+   }
 }
 
 void
@@ -828,6 +816,8 @@ _chann_event(chann_t *n, mnet_event_type_t event, chann_t *r) {
    e.opaque = n->opaque;
    if ( n->cb ) {
       n->cb( &e );
+   } else {
+      _log("chann %p fd %d no callback\n", n, n->fd);
    }
 }
 
@@ -838,7 +828,7 @@ mnet_init() {
    mnet_t *ss = _gmnet();
    if ( !ss->init ) {
       memset(ss, 0, sizeof(mnet_t));
-#ifdef MNET_OS_WIN
+#if MNET_OS_WIN
       WSADATA wdata;
       if (WSAStartup(MAKEWORD(2,2), &wdata) != 0) {
          _err("fail to init !\n");
@@ -862,12 +852,13 @@ mnet_fini() {
       chann_t *n = ss->channs;
       while ( n ) {
          chann_t *next = n->next;
+         _chann_event(n, MNET_EVENT_DISCONNECT, NULL);
+         _chann_close_socket(ss, n);
          _chann_event(n, MNET_EVENT_CLOSE, NULL);
-         _chann_close(ss, n);
          _chann_destroy(ss, n);
          n = next;
       }
-#ifdef MNET_OS_WIN
+#if MNET_OS_WIN
       WSACleanup();
 #else
       _evt_fini();
@@ -901,17 +892,8 @@ mnet_chann_open(chann_type_t type) {
 }
 
 void mnet_chann_close(chann_t *n) {
-   if ( n ) {
-#if defined(MNET_OS_WIN)
-      if (n->state == CHANN_STATE_CLOSING) {
-         _chann_close(_gmnet(), n);
-         _chann_destroy(_gmnet(), n);
-      } else {
-         n->state = CHANN_STATE_CLOSING;
-      }
-#else
-      _evt_closing(n);
-#endif
+   if (n) {
+      _chann_close_socket(_gmnet(), n);
    }
 }
 
@@ -959,7 +941,7 @@ _chann_open_socket(chann_t *n, const char *host, int port, int backlog) {
 
 int
 mnet_chann_connect(chann_t *n, const char *host, int port) {
-   if (n && host && port>0) {
+   if (n && host && port>0 && n->state<=CHANN_STATE_DISCONNCT) {
       int fd = _chann_open_socket(n, host, port, 0);
       if (fd > 0) {
          n->fd = fd;
@@ -968,15 +950,30 @@ mnet_chann_connect(chann_t *n, const char *host, int port) {
             if (r < 0) {
                if (errno==EINPROGRESS || errno==EWOULDBLOCK)
                   n->state = CHANN_STATE_CONNECTING;
+            } else {
+               n->state = CHANN_STATE_CONNECTING;
             }
-#if defined(MNET_OS_LINUX) || defined(MNET_OS_MACOX)
-            _evt_add(n, MNET_SET_WRITE);
-#endif
             _log("chann %p fd:%d type:%d connecting...\n", n, fd, n->type);
          } else {
             n->state = CHANN_STATE_CONNECTED;
             _log("chann %p fd:%d type:%d connected\n", n, fd, n->type);
          }
+#if (MNET_OS_MACOX | MNET_OS_LINUX)
+         _evt_add(n, MNET_SET_WRITE);
+         {
+            mnet_t *ss = _gmnet();
+            if (ss->del_channs == n) {
+               ss->del_channs = n->del_next;
+            }
+            if (n->del_prev) {
+               n->del_prev->next = n->del_next;
+            }
+            if (n->del_next) {
+               n->del_next->prev = n->del_prev;
+            }
+            n->del_next = n->del_prev = NULL;
+         }
+#endif
          return 1;
       }
       _err("chann %p fail to connect\n", n);
@@ -984,14 +981,21 @@ mnet_chann_connect(chann_t *n, const char *host, int port) {
    return 0;
 }
 
+void
+mnet_chann_disconnect(chann_t *n) {
+   if (n) {
+      _chann_close_socket(_gmnet(), n);
+   }
+}
+
 int
 mnet_chann_listen_ex(chann_t *n, const char *host, int port, int backlog) {
-   if (n && port>0) {
+   if (n && port>0 && n->state<=CHANN_STATE_DISCONNCT) {
       int fd = _chann_open_socket(n, host, port, backlog | 1);
       if (fd > 0) {
          n->fd = fd;
          n->state = CHANN_STATE_LISTENING;
-#if defined(MNET_OS_LINUX) || defined(MNET_OS_MACOX)
+#if (MNET_OS_MACOX | MNET_OS_LINUX)
          _evt_add(n, MNET_SET_READ);
 #endif
          _log("chann %p, fd:%d listen\n", n, fd);
@@ -1020,7 +1024,7 @@ void mnet_chann_active_event(chann_t *n, mnet_event_type_t et, int active) {
 }
 
 int mnet_chann_recv(chann_t *n, void *buf, int len) {
-   if (n && buf && len>0) {
+   if (n && buf && len>0 && n->state>=CHANN_STATE_CONNECTED) {
       int ret = 0;
       if (n->type == CHANN_TYPE_STREAM) {
          ret = (int)recv(n->fd, buf, len, 0);
@@ -1030,11 +1034,8 @@ int mnet_chann_recv(chann_t *n, void *buf, int len) {
       }
       if (ret <= 0) {
          if (errno != EWOULDBLOCK) {
-#if defined(MNET_OS_WIN)
-            n->state = CHANN_STATE_CLOSING;
-#else
-            _evt_closing(n);
-#endif
+            _err("errno = %d\n", errno);
+            _chann_close_socket(_gmnet(), n);
          }
       } else {
          n->bytes_recv += ret;
@@ -1046,7 +1047,7 @@ int mnet_chann_recv(chann_t *n, void *buf, int len) {
 }
 
 int mnet_chann_send(chann_t *n, void *buf, int len) {
-   if ( n ) {
+   if (n && buf && len>0 && n->state>=CHANN_STATE_CONNECTED) {
       int ret = len;
       rwb_head_t *prh = &n->rwb_send;
 
@@ -1057,11 +1058,8 @@ int mnet_chann_send(chann_t *n, void *buf, int len) {
          ret = _chann_send(n, buf, len);
          if (ret <= 0) {
             if (errno != EWOULDBLOCK) {
-#if defined(MNET_OS_WIN)
-               n->state = CHANN_STATE_CLOSING;
-#else
-               _evt_closing(n);
-#endif
+               _err("errno = %d\n", errno);
+               _chann_close_socket(_gmnet(), n);
             }
          } else if (ret < len) {
             _rwb_cache(prh, ((char*)buf) + ret, len - ret);
@@ -1112,7 +1110,7 @@ long long mnet_chann_bytes(chann_t *n, int be_send) {
 
 int
 mnet_poll(int microseconds) {
-#ifdef MNET_OS_WIN
+#if MNET_OS_WIN
    return _select_poll(microseconds);
 #else
    return _evt_poll(microseconds);
