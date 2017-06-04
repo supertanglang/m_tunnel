@@ -51,7 +51,8 @@ typedef enum {
 /* chann state to front */
 typedef enum {
    REMOTE_CHANN_STATE_NONE = 0,
-   REMOTE_CHANN_STATE_DISCONNECT, /* chann disconnect from tcpin */
+   REMOTE_CHANN_STATE_DISCONNECT, /* chann tcpout disconnect */
+   REMOTE_CHANN_STATE_CONNECTING, /* chann tcpout connecting */
    REMOTE_CHANN_STATE_CONNECTED,  /* chann tcpout connected */
 } remote_chann_state_t;
 
@@ -79,6 +80,7 @@ typedef struct {
    buf_t *bufin;
    lst_t *active_lst;
    lst_t *free_lst;
+   lst_t *close_lst;            /* chann_id/magic have closed */
    lst_node_t *node;            /* node in clients_lst */
    tun_remote_chann_t *channs[TUNNEL_CHANN_MAX_COUNT];
 } tun_remote_client_t;
@@ -133,6 +135,7 @@ _remote_client_create(chann_t *n) {
    assert(c->bufin);
    c->active_lst = lst_create();
    c->free_lst = lst_create();
+   c->close_lst = lst_create();
    c->node = lst_pushl(tun->clients_lst, c);
    mnet_chann_set_cb(n, _remote_tcpin_cb, c);
    //_verbose("client create %p(%p), %d\n", c, c->tcpin, lst_count(tun->clients_lst));
@@ -164,6 +167,11 @@ _remote_client_destroy(tun_remote_client_t *c) {
          mm_free(rc);
       }
       lst_destroy(c->free_lst);
+
+      while (lst_count(c->close_lst) > 0) {
+         mm_free(lst_popf(c->close_lst));
+      }
+      lst_destroy(c->close_lst);
 
       lst_remove(tun->clients_lst, c->node);
       c->node = NULL;
@@ -200,6 +208,11 @@ _remote_chann_open(tun_remote_client_t *c, tunnel_cmd_t *tcmd, char *addr, int p
    if (mnet_chann_connect(rc->tcpout, addr, port) > 0) {
       /* _verbose("chann %d:%d open, [a:%d, f:%d]\n", rc->chann_id, rc->magic, */
       /*          lst_count(c->active_lst), lst_count(c->free_lst)); */
+      if (mnet_chann_state(rc->tcpout) == CHANN_STATE_CONNECTED) {
+         rc->state = REMOTE_CHANN_STATE_CONNECTED;
+      } else {
+         rc->state = REMOTE_CHANN_STATE_CONNECTING;
+      }
       return rc;
    }
    _err("chann fail to open %d, %p\n", tcmd->chann_id, c);
@@ -210,16 +223,13 @@ void
 _remote_chann_close(tun_remote_chann_t *rc) {
    tun_remote_client_t *c = (tun_remote_client_t*)rc->client;
    if (rc->node) {
-      tun_remote_chann_t *lc = c->channs[rc->chann_id];
-      _verbose("chann %d:%d close (a:%d,f:%d)\n", rc->chann_id, rc->magic,
-               lst_count(c->active_lst), lst_count(c->free_lst));
+      _verbose("chann %p %d:%d close state:%d (a:%d,f:%d)\n",rc->tcpout, rc->chann_id, rc->magic,
+               mnet_chann_state(rc->tcpout), lst_count(c->active_lst), lst_count(c->free_lst));
 
       mnet_chann_set_cb(rc->tcpout, NULL, NULL);
       _remote_chann_disconnect(rc);
 
-      if (lc && lc->chann_id==rc->chann_id && lc->magic==rc->magic) {
-         c->channs[rc->chann_id] = NULL;
-      }
+      c->channs[rc->chann_id] = NULL;
       rc->chann_id = 0;
 
       lst_remove(c->active_lst, rc->node);
@@ -487,8 +497,8 @@ _remote_tcpin_cb(chann_event_t *e) {
                   char domain[TUNNEL_DNS_DOMAIN_LEN] = {0};
 
                   strcpy(domain, (const char*)&payload[3]);
-                  _verbose("chann %d:%d query domain [%s:%d], %d\n", tcmd.chann_id,
-                           tcmd.magic, domain, port, strlen(addr));
+                  _verbose("chann %d:%d query domain [%s:%d], %d\n",
+                           tcmd.chann_id, tcmd.magic, domain, port, strlen(addr));
                   
                   dns_query_t *query_entry = _dns_query_create(port, tcmd.chann_id, tcmd.magic, c);
                   dns_query_domain(domain, strlen(domain), _remote_aux_dns_cb, query_entry);
@@ -498,6 +508,11 @@ _remote_tcpin_cb(chann_event_t *e) {
                tun_remote_chann_t *rc = _remote_chann_of_id_magic(c, tcmd.chann_id, tcmd.magic);
                if (rc) {
                   _remote_chann_disconnect(rc);
+               } else {
+                  /* FIXME: dns have not returned */
+                  tunnel_cmd_t *ptcmd = (tunnel_cmd_t*)mm_malloc(sizeof(tunnel_cmd_t));
+                  *ptcmd = tcmd;
+                  lst_pushl(c->close_lst, ptcmd);
                }
             }
          }
@@ -587,7 +602,7 @@ _remote_tcpout_cb(chann_event_t *e) {
    }
    else if (e->event == MNET_EVENT_CONNECTED) {
       if (rc->state < REMOTE_CHANN_STATE_CONNECTED) {
-         _verbose("chann %d:%d connected\n", rc->chann_id, rc->magic);
+         _verbose("chann %p %d:%d connected\n", rc->tcpout, rc->chann_id, rc->magic);
          rc->state = REMOTE_CHANN_STATE_CONNECTED;
          _remote_send_connect_result(c, rc->chann_id, rc->magic, 1);
       }
@@ -603,6 +618,22 @@ _remote_tcpout_cb(chann_event_t *e) {
       _remote_chann_close(rc);
    }
 }
+
+int
+_remote_chann_in_close_lst(tun_remote_client_t *c, tunnel_cmd_t *tcmd) {
+   int to_close = 0;
+   lst_foreach(it, c->close_lst) {
+      tunnel_cmd_t *ptcmd = lst_iter_data(it);
+      if (ptcmd->chann_id==tcmd->chann_id && ptcmd->magic==tcmd->magic) {
+         mm_free(ptcmd);
+         lst_iter_remove(it);
+         to_close = 1;
+         _info("chann %d:%d in close_lst\n", tcmd->chann_id, tcmd->magic);
+      }
+   }
+   return to_close;
+}
+
 
 static void
 _remote_listen_cb(chann_event_t *e) {
@@ -796,7 +827,7 @@ main(int argc, char *argv[]) {
             }
 
 
-            /* check dns ip_stm */
+            /* check dns ip_stm, and create chann_id/magic paired socket */
             while (stm_count(tun->ip_stm) > 0) {
                dns_query_t *q = stm_popf(tun->ip_stm);
                tun_remote_client_t *c = q->opaque;
@@ -818,13 +849,15 @@ main(int argc, char *argv[]) {
                   tcmd.chann_id = q->chann_id;
                   tcmd.magic = q->magic;
 
-                  if (q->port <= 0) {
-                     is_connect = 0;
-                  }
-                  else {
-                     tun_remote_chann_t *rc = _remote_chann_open(c, &tcmd, q->addr, q->port);
-                     if (rc == NULL) {
+                  /* check dns query chann_id/magic not in close_lst */
+                  if ( !_remote_chann_in_close_lst(c, &tcmd) ) {
+                     if (q->port <= 0) {
                         is_connect = 0;
+                     } else {
+                        tun_remote_chann_t *rc = _remote_chann_open(c, &tcmd, q->addr, q->port);
+                        if (rc == NULL) {
+                           is_connect = 0;
+                        }
                      }
                   }
 
@@ -841,7 +874,7 @@ main(int argc, char *argv[]) {
             if (tun->timer_active > 0) {
                tun->timer_active = 0;
                mm_report(1);
-               _verbose("chann count %d\n", mnet_report(0));
+               _verbose("channs count:%d\n", mnet_report(0));
             }
          }
 

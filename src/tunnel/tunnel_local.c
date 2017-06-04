@@ -155,23 +155,18 @@ static void
 _local_chann_close(tun_local_chann_t *c) {
    tun_local_t *tun = _tun_local();
    if (c->node) {
-      tun_local_chann_t *lc = tun->channs[c->chann_id];
+      _verbose("chann %p %d:%d close, state:%d (a:%d,f:%d)\n", c->tcpin, c->chann_id, c->magic,
+               mnet_chann_state(c->tcpin), lst_count(tun->active_lst), lst_count(tun->free_lst));
 
       mnet_chann_set_cb(c->tcpin, NULL, NULL);
       _local_chann_disconnect(c);
 
-      if (lc && lc->chann_id==c->chann_id && lc->magic==c->magic) {
-         tun->channs[c->chann_id] = NULL;
-      }
-
+      tun->channs[c->chann_id] = NULL;
       lst_remove(tun->active_lst, c->node);
       lst_pushl(tun->free_lst, c);
 
       c->node = NULL;
       c->state = LOCAL_CHANN_STATE_NONE;
-
-      _verbose("chann %d:%d close, (a:%d,f:%d)\n", c->chann_id, c->magic,
-              lst_count(tun->active_lst), lst_count(tun->free_lst));
    }
 }
 
@@ -288,7 +283,7 @@ _front_cmd_connect(tun_local_chann_t *fc, int addr_type, char *addr, int port) {
 }
 
 static void
-_front_cmd_disconnect(tun_local_chann_t *c) {
+_front_cmd_disconnect_ex(tun_local_chann_t *c, const char *file, int line) {
    if (c->state >= LOCAL_CHANN_STATE_WAIT_REMOTE) {
       uint8_t data[32] = {0};
       int head_len = TUNNEL_CMD_CONST_HEADER_LEN;
@@ -301,12 +296,12 @@ _front_cmd_disconnect(tun_local_chann_t *c) {
       tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_CLOSE);
       data[head_len] = 1;
 
-      /* _verbose("chann %d:%d send disconnect close\n", */
-      /*          c->chann_id, c->magic); */
-
-      _front_send_remote_data(data, head_len + 1);
+      int ret = _front_send_remote_data(data, head_len + 1);
+      _verbose("chann %d:%d send disconnect close:%d, in %s:%d\n",
+               c->chann_id, c->magic, ret, file, line);
    }
 }
+#define _front_cmd_disconnect(c) _front_cmd_disconnect_ex(c, __FILE__, __LINE__)
 
 static inline int
 _local_buf_available(buf_t *b) {
@@ -411,12 +406,12 @@ _local_chann_tcpin_cb_front(chann_event_t *e) {
       _front_cmd_disconnect(fc);
       _local_chann_close(fc);
 
-      if (lst_count(tun->active_lst) <= 0) {
-         if (!tun->reset_connection) {
-            tunnel_local_close();
-            tun->reset_connection = 1;
-         }
-      }
+      /* if (lst_count(tun->active_lst) <= 0) { */
+      /*    if (!tun->reset_connection) { */
+      /*       tunnel_local_close(); */
+      /*       tun->reset_connection = 1; */
+      /*    } */
+      /* } */
    }
 }
 
@@ -813,7 +808,7 @@ main(int argc, char *argv[]) {
                tun->data_mark = 0;
 
                mm_report(1);
-               _verbose("chann count %d\n", mnet_report(0));
+               _verbose("channs count:%d\n", mnet_report(0));
             }
             else if (tun->reset_connection) {
                tun->reset_connection = 0;

@@ -19,7 +19,7 @@ typedef enum {
 } chann_type_t;
 
 typedef enum {
-   CHANN_STATE_CLOSED,
+   CHANN_STATE_CLOSED = 0,
    CHANN_STATE_DISCONNCT,
    CHANN_STATE_CONNECTING,
    CHANN_STATE_CONNECTED,
@@ -28,7 +28,7 @@ typedef enum {
 
 typedef enum {
    MNET_EVENT_RECV = 1,     /* socket has data to read */
-   MNET_EVENT_SEND,         /* socket send buf empty, need set active */
+   MNET_EVENT_SEND,         /* socket send buf empty, inactive default */
    MNET_EVENT_CLOSE,        /* socket close */
    MNET_EVENT_ACCEPT,       /* tcp accept */
    MNET_EVENT_CONNECTED,    /* tcp connected */
@@ -37,8 +37,8 @@ typedef enum {
 
 typedef struct s_mchann chann_t;
 typedef struct {
-   mnet_event_type_t event;
-   chann_t *n;
+   mnet_event_type_t event;     /* event type */
+   chann_t *n;                  /* chann emit the event */
    chann_t *r;                  /* chann accept from remote */
    void *opaque;                /* opaque in set_cb */
 } chann_event_t;
@@ -52,7 +52,7 @@ void mnet_fini(void);
 int mnet_poll(int microseconds);
 int mnet_report(int level);
 
-/* channels */
+/* channel */
 chann_t* mnet_chann_open(chann_type_t type);
 void mnet_chann_close(chann_t *n);
 
