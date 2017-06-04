@@ -211,7 +211,7 @@ _remote_chann_close(tun_remote_chann_t *rc) {
    tun_remote_client_t *c = (tun_remote_client_t*)rc->client;
    if (rc->node) {
       tun_remote_chann_t *lc = c->channs[rc->chann_id];
-      _verbose("chann %d:%d close [a:%d, f:%d]\n", rc->chann_id, rc->magic,
+      _verbose("chann %d:%d close (a:%d,f:%d)\n", rc->chann_id, rc->magic,
                lst_count(c->active_lst), lst_count(c->free_lst));
 
       mnet_chann_set_cb(rc->tcpout, NULL, NULL);
@@ -233,7 +233,7 @@ _remote_chann_close(tun_remote_chann_t *rc) {
 void
 _remote_chann_disconnect(tun_remote_chann_t *rc) {
    if (rc->state > REMOTE_CHANN_STATE_DISCONNECT) {
-      _verbose("chann %d:%d disconnect %p\n", rc->chann_id, rc->magic, rc);
+      /* _verbose("chann %d:%d disconnect %p\n", rc->chann_id, rc->magic, rc); */
 
       rc->state = REMOTE_CHANN_STATE_DISCONNECT;
       mnet_chann_disconnect(rc->tcpout);
@@ -359,7 +359,7 @@ _remote_send_connect_result(tun_remote_client_t *c, int chann_id, int magic, int
       _err("fail to send connect result %d, %d!\n", ret, data_len);
    }
          
-   _info("chann %p send chann [%d:%d] connection result %d\n", c, chann_id, magic, result);
+   /* _info("chann %p send chann [%d:%d] connection result %d\n", c, chann_id, magic, result); */
 }
 
 static inline void
@@ -424,17 +424,14 @@ _remote_tcpin_cb(chann_event_t *e) {
          }
 
          if (ret <= 0) {
-            _verbose("invalid ret %d\n", ret);
             return;
          }
          buf_forward_ptw(ib, ret);
 
          if (buf_buffered(ib) <= TUNNEL_CMD_CONST_HEADER_LEN) {
-            _verbose("buffered insufficient\n");
             continue;
          }
          if (tcmd.data_len != buf_buffered(ib)) {
-            _verbose("invalid data len %d:%d\n", tcmd.data_len, buf_buffered(ib));
             return;
          }
 
@@ -596,12 +593,12 @@ _remote_tcpout_cb(chann_event_t *e) {
       }
    }
    else if (e->event == MNET_EVENT_DISCONNECT) {
-      _verbose("chann %d:%d disconnect\n", rc->chann_id, rc->magic);
+      /* _verbose("chann %d:%d disconnect\n", rc->chann_id, rc->magic); */
       _remote_send_close(c, rc, 1);
       _remote_chann_disconnect(rc);
    }
    else if (e->event == MNET_EVENT_CLOSE) {
-      _verbose("chann %d:%d close, mnet\n", rc->chann_id, rc->magic);
+      /* _verbose("chann %d:%d close, mnet\n", rc->chann_id, rc->magic); */
       _remote_send_close(c, rc, 1);
       _remote_chann_close(rc);
    }

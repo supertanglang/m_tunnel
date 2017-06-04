@@ -58,8 +58,8 @@ typedef struct epoll_event mevent_t;
 #include <assert.h>
 
 #define _err(...) _mlog("mnet", D_ERROR, __VA_ARGS__)
-#define _log(...) _mlog("mnet", D_VERBOSE, __VA_ARGS__)
-/* #define _log(...) */
+//#define _log(...) _mlog("mnet", D_VERBOSE, __VA_ARGS__)
+#define _log(...)
 
 #define _MIN_OF(a, b) (((a) < (b)) ? (a) : (b))
 #define _MAX_OF(a, b) (((a) > (b)) ? (a) : (b))

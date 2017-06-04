@@ -141,8 +141,8 @@ _local_chann_open(chann_t *r) {
 static void
 _local_chann_disconnect(tun_local_chann_t *c) {
    if (c->state > LOCAL_CHANN_STATE_DISCONNECT) {
-      _verbose("chann %d:%d disconnect %d\n",
-               c->chann_id, c->magic, mnet_chann_state(c->tcpin));
+      /* _verbose("chann %d:%d disconnect %d\n", */
+      /*          c->chann_id, c->magic, mnet_chann_state(c->tcpin)); */
 
       mnet_chann_disconnect(c->tcpin);
       c->state = LOCAL_CHANN_STATE_DISCONNECT;
@@ -169,6 +169,7 @@ _local_chann_close(tun_local_chann_t *c) {
 
       c->node = NULL;
       c->state = LOCAL_CHANN_STATE_NONE;
+
       _verbose("chann %d:%d close, (a:%d,f:%d)\n", c->chann_id, c->magic,
               lst_count(tun->active_lst), lst_count(tun->free_lst));
    }
@@ -300,8 +301,8 @@ _front_cmd_disconnect(tun_local_chann_t *c) {
       tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_CLOSE);
       data[head_len] = 1;
 
-      _verbose("chann %d:%d send disconnect close\n",
-               c->chann_id, c->magic);
+      /* _verbose("chann %d:%d send disconnect close\n", */
+      /*          c->chann_id, c->magic); */
 
       _front_send_remote_data(data, head_len + 1);
    }
@@ -410,9 +411,9 @@ _local_chann_tcpin_cb_front(chann_event_t *e) {
       _front_cmd_disconnect(fc);
       _local_chann_close(fc);
 
-      if (lst_count(tun->active_lst) <= 3) {
+      if (lst_count(tun->active_lst) <= 0) {
          if (!tun->reset_connection) {
-            /* tunnel_local_close(); */
+            tunnel_local_close();
             tun->reset_connection = 1;
          }
       }
@@ -453,18 +454,15 @@ _local_tcpout_cb_front(chann_event_t *e) {
          }
 
          if (ret <= 0) {
-            _verbose("invalid ret %d\n", ret);
             return;
          }
          buf_forward_ptw(ob, ret);
 
          if (buf_buffered(ob) <= TUNNEL_CMD_CONST_HEADER_LEN) {
-            _verbose("buffered insufficient\n");
             continue;
          }
 
          if (tcmd.data_len != buf_buffered(ob)) {
-            _verbose("invalid data len %d:%d\n", tcmd.data_len, buf_buffered(ob));
             return;
          }
 
@@ -519,16 +517,16 @@ _local_tcpout_cb_front(chann_event_t *e) {
                      }
                   }
                   else {
-                     _err("chann %d err state %d\n", tcmd.chann_id, fc->state);
+                     /* _err("chann %d err state %d\n", tcmd.chann_id, fc->state); */
                   }
                }
                else if (tcmd.cmd == TUNNEL_CMD_CLOSE)
                {
-                  _verbose("chann %d close cmd %d\n", tcmd.chann_id, tcmd.payload[0]);
+                  /* _verbose("chann %d close cmd %d\n", tcmd.chann_id, tcmd.payload[0]); */
                   _local_chann_disconnect(fc);
                }
                else {
-                  _err("chann %d err cmd %d\n", tcmd.chann_id, tcmd.cmd);
+                  /* _err("chann %d err cmd %d\n", tcmd.chann_id, tcmd.cmd); */
                }
             }
          }
