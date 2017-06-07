@@ -512,7 +512,7 @@ _remote_tcpin_cb(chann_event_t *e) {
                   /* FIXME: dns have not returned */
                   tunnel_cmd_t *ptcmd = (tunnel_cmd_t*)mm_malloc(sizeof(tunnel_cmd_t));
                   *ptcmd = tcmd;
-                  lst_pushl(c->close_lst, ptcmd);
+                  lst_pushf(c->close_lst, ptcmd);
                }
             }
          }
@@ -703,6 +703,18 @@ _remote_sig_timer(int sig) {
    tun->timer_active = 1;
 }
 
+static tun_remote_client_t*
+_remote_active_client(tun_remote_client_t *c) {
+   tun_remote_t *tun = _tun_remote();
+   lst_foreach(it, tun->clients_lst) {
+      tun_remote_client_t *lc = lst_iter_data(it);
+      if (lc == c) {
+         return c;
+      }
+   }
+   return NULL;
+}
+
 static int
 _remote_install_sig_timer() {
    struct itimerval tick;
@@ -832,17 +844,7 @@ main(int argc, char *argv[]) {
                dns_query_t *q = stm_popf(tun->ip_stm);
                tun_remote_client_t *c = q->opaque;
 
-               int client_exist = 0;
-
-               lst_foreach(it, tun->clients_lst) {
-                  tun_remote_client_t *lc = lst_iter_data(it);
-                  if (lc == c) {
-                     client_exist = 1;
-                     break;
-                  }
-               }
-
-               if (client_exist) {
+               if ( _remote_active_client(c) ) {
                   tunnel_cmd_t tcmd;
                   int is_connect = 1;
 
