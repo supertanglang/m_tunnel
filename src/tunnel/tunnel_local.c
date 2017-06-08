@@ -399,7 +399,7 @@ _local_chann_tcpin_cb_front(chann_event_t *e) {
       buf_reset(ib);
    }
    else if (e->event == MNET_EVENT_DISCONNECT) {
-      /* _front_cmd_disconnect(fc); */
+      _front_cmd_disconnect(fc);
       _local_chann_disconnect(fc);
    }
    else if (e->event == MNET_EVENT_CLOSE) {

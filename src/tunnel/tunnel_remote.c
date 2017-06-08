@@ -625,10 +625,11 @@ _remote_chann_in_close_lst(tun_remote_client_t *c, tunnel_cmd_t *tcmd) {
    lst_foreach(it, c->close_lst) {
       tunnel_cmd_t *ptcmd = lst_iter_data(it);
       if (ptcmd->chann_id==tcmd->chann_id && ptcmd->magic==tcmd->magic) {
-         mm_free(ptcmd);
-         lst_iter_remove(it);
+         /* mm_free(ptcmd); */
+         /* lst_iter_remove(it); */
          to_close = 1;
          _info("chann %d:%d in close_lst\n", tcmd->chann_id, tcmd->magic);
+         break;
       }
    }
    return to_close;
