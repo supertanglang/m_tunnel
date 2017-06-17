@@ -5,7 +5,7 @@ m_tunnel was a secure TCP tunnel with sock5 proxy interface, action like shadows
 
 only support IPV4, under MacOS/Linux/Windows. 
 
-using crypto from cloudwu's mptun https://github.com/cloudwu/mptun/.
+using RC4 crypto from cloudwu's mptun https://github.com/cloudwu/mptun/.
 
 
 
