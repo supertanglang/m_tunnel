@@ -674,8 +674,8 @@ _evt_poll(int microseconds) {
 
          /* check error first */
          if ( _kev_flags(kev, (_KEV_FLAG_ERROR | _KEV_FLAG_HUP)) ) {
-            if (_kev_flags(kev, _KEV_FLAG_ERROR)) _err("chann %p got error: %d\n", n, _kev_errno(kev));
-            else _info("chann %p got eof: %d\n", n, _kev_errno(kev));
+            if (_kev_flags(kev, _KEV_FLAG_ERROR)) { _err("chann %p got error: %d\n", n, _kev_errno(kev)); }
+            else { _info("chann %p got eof: %d\n", n, _kev_errno(kev)); }
             _chann_close_socket(ss, n);
          }
 
@@ -771,9 +771,9 @@ _chann_create(mnet_t *ss, chann_type_t type, chann_state_t state) {
 
 void
 _chann_destroy(mnet_t *ss, chann_t *n) {
-   if (n->next) n->next->prev = n->prev;
-   if (n->prev) n->prev->next = n->next;
-   else ss->channs = n->next;
+   if (n->next) { n->next->prev = n->prev; }
+   if (n->prev) { n->prev->next = n->next; }
+   else { ss->channs = n->next; }
    _rwb_destroy(&n->rwb_send);
    mm_free(n);
    ss->chann_count--;
@@ -950,9 +950,9 @@ _chann_open_socket(chann_t *n, const char *host, int port, int backlog) {
 #if (MNET_OS_MACOX | MNET_OS_LINUX)
          {
             mnet_t *ss = _gmnet();
-            if (n->del_next) n->del_next->prev = n->del_prev;
-            if (n->del_prev) n->del_prev->next = n->del_next;
-            else if (ss->del_channs == n) ss->del_channs = n->del_next;
+            if (n->del_next) { n->del_next->prev = n->del_prev; }
+            if (n->del_prev) { n->del_prev->next = n->del_next; }
+            else if (ss->del_channs == n) { ss->del_channs = n->del_next; }
             n->del_next = n->del_prev = NULL;
          }
 #endif         
