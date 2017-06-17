@@ -359,8 +359,9 @@ _select_poll(int microseconds) {
    sw = &ss->fdset[MNET_SET_WRITE];
    se = &ss->fdset[MNET_SET_ERROR];
 
-   tv.tv_sec = 0;
-   tv.tv_usec = microseconds;
+   tv.tv_sec = microseconds >> 20;
+   tv.tv_usec = microseconds & ((1<<20)-1);
+
    if (select(nfds, sr, sw, se, microseconds >= 0 ? &tv : NULL) < 0) {
       if (errno != EINTR) {
          perror("select error !\n");
@@ -645,8 +646,10 @@ _evt_poll(int microseconds) {
 
 #if MNET_OS_MACOX
    struct timespec tsp;
-   tsp.tv_sec = 0;
-   tsp.tv_nsec = (long)microseconds * 1000;
+   if (microseconds > 0) {
+      tsp.tv_sec = microseconds >> 20;
+      tsp.tv_nsec = (uint64_t)(microseconds & ((1<<20)-1)) * 1000;
+   }
    nfd = kevent(ss->kq, chg->array, chg->count, evt->array, evt->size, microseconds<=0 ? NULL : &tsp);
 #else
    nfd = epoll_wait(ss->kq, evt->array, evt->size, microseconds); /* LINUX */
@@ -663,8 +666,9 @@ _evt_poll(int microseconds) {
          chann_t *n = (chann_t*)_kev_opaque(kev);
 
          (void)_kev_get_flags(kev);
-         _log("chann %p fd %d event, flags:%x events:%x, state %d\n",
-              n, n->fd, _kev_get_flags(kev), _kev_get_events(kev), n->state);
+         _log("chann:%p,fd:%d,flags:%x,events:%x,state:%d (E:%x,H:%x,R:%x,W:%x)\n",
+              n, n->fd, _kev_get_flags(kev), _kev_get_events(kev), n->state,
+              _KEV_FLAG_ERROR, _KEV_FLAG_HUP, _KEV_EVENT_READ, _KEV_EVENT_WRITE);
 
          /* check error first */
          if ( _kev_flags(kev, (_KEV_FLAG_ERROR | _KEV_FLAG_HUP)) ) {
@@ -714,6 +718,8 @@ _evt_poll(int microseconds) {
                      if (ret > 0) _rwb_drain(prh, ret);
                   } else if ( n->active_send_event ) {
                      _chann_event(n, MNET_EVENT_SEND, NULL);
+                  } else {
+                     _evt_del(n, MNET_SET_WRITE);
                   }
                }
                break;
@@ -732,11 +738,11 @@ _evt_poll(int microseconds) {
 
    chann_t *n = ss->del_channs;
    while (n) {
-      chann_t *nn = n->del_next;
+      chann_t *next = n->del_next;
       _chann_event(n, MNET_EVENT_DISCONNECT, NULL);
       _chann_event(n, MNET_EVENT_CLOSE, NULL);
       _chann_destroy(ss, n);
-      n = nn;
+      n = next;
    }
    ss->del_channs = NULL;
 
@@ -808,10 +814,10 @@ void
 _chann_close_socket(mnet_t *ss, chann_t *n) {
    if (n->state > CHANN_STATE_DISCONNCT) {
 #if (MNET_OS_MACOX | MNET_OS_LINUX)
+      n->del_next = ss->del_channs;
       if (ss->del_channs) {
          ss->del_channs->del_prev = n;
       }
-      n->del_next = ss->del_channs;
       ss->del_channs = n;
 #endif
       n->state = CHANN_STATE_DISCONNCT;
@@ -830,7 +836,7 @@ _chann_event(chann_t *n, mnet_event_type_t event, chann_t *r) {
    if ( n->cb ) {
       n->cb( &e );
    } else {
-      _log("chann %p fd %d no callback\n", n, n->fd);
+      _err("chann %p fd %d no callback\n", n, n->fd);
    }
 }
 
@@ -942,15 +948,9 @@ _chann_open_socket(chann_t *n, const char *host, int port, int backlog) {
 #if (MNET_OS_MACOX | MNET_OS_LINUX)
          {
             mnet_t *ss = _gmnet();
-            if (ss->del_channs == n) {
-               ss->del_channs = n->del_next;
-            }
-            if (n->del_prev) {
-               n->del_prev->next = n->del_next;
-            }
-            if (n->del_next) {
-               n->del_next->prev = n->del_prev;
-            }
+            if (n->del_next) n->del_next->prev = n->del_prev;
+            if (n->del_prev) n->del_prev->next = n->del_next;
+            else if (ss->del_channs == n) ss->del_channs = n->del_next;
             n->del_next = n->del_prev = NULL;
          }
 #endif         
@@ -1068,6 +1068,7 @@ int mnet_chann_send(chann_t *n, void *buf, int len) {
 
       if (_rwb_count(prh) > 0) {
          _rwb_cache(prh, (char*)buf, len);
+         _info("------------ still cache %d!\n", len);
       }
       else {
          ret = _chann_send(n, buf, len);
@@ -1078,8 +1079,9 @@ int mnet_chann_send(chann_t *n, void *buf, int len) {
             }
          } else if (ret < len) {
             _rwb_cache(prh, ((char*)buf) + ret, len - ret);
-            printf("------------ cache %d of %d!\n", ret, len);
             ret = len;
+            _evt_add(n, MNET_SET_WRITE);
+            _info("------------ cache %d of %d!\n", ret, len);
          }
       }
       return ret;

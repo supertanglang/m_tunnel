@@ -48,6 +48,8 @@
 #define _info(...) _mlog("local", D_INFO, __VA_ARGS__)
 #define _verbose(...) _mlog("local", D_VERBOSE, __VA_ARGS__)
 
+#define LOCAL_TIMEOUT_SECOND 16
+
 #ifdef TEST_TUNNEL_LOCAL
 
 /* state to remote */
@@ -79,8 +81,8 @@ typedef struct {
 typedef struct {
    int running;                 /* running status */
    time_t ti;
+   time_t last_ti;
    uint64_t key;
-   int timer_active;
    int data_mark;
    int chann_idx;
    int magic_code;
@@ -283,25 +285,22 @@ _front_cmd_connect(tun_local_chann_t *fc, int addr_type, char *addr, int port) {
 }
 
 static void
-_front_cmd_disconnect_ex(tun_local_chann_t *c, const char *file, int line) {
-   if (c->state >= LOCAL_CHANN_STATE_WAIT_REMOTE) {
-      uint8_t data[32] = {0};
-      int head_len = TUNNEL_CMD_CONST_HEADER_LEN;
+_front_cmd_close(tun_local_chann_t *c) {
+   uint8_t data[32] = {0};
+   int head_len = TUNNEL_CMD_CONST_HEADER_LEN;
 
-      memset(data, 0, sizeof(data));
+   memset(data, 0, sizeof(data));
 
-      tunnel_cmd_data_len(data, 1, head_len + 1);
-      tunnel_cmd_chann_id(data, 1, c->chann_id);
-      tunnel_cmd_chann_magic(data, 1, c->magic);
-      tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_CLOSE);
-      data[head_len] = 1;
+   tunnel_cmd_data_len(data, 1, head_len + 1);
+   tunnel_cmd_chann_id(data, 1, c->chann_id);
+   tunnel_cmd_chann_magic(data, 1, c->magic);
+   tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_CLOSE);
+   data[head_len] = 1;
 
-      int ret = _front_send_remote_data(data, head_len + 1);
-      _verbose("chann %d:%d send disconnect close:%d, in %s:%d\n",
-               c->chann_id, c->magic, ret, file, line);
-   }
+   int ret = _front_send_remote_data(data, head_len + 1);
+   _verbose("chann %d:%d send disconnect close:%d\n",
+            c->chann_id, c->magic, ret);
 }
-#define _front_cmd_disconnect(c) _front_cmd_disconnect_ex(c, __FILE__, __LINE__)
 
 static inline int
 _local_buf_available(buf_t *b) {
@@ -340,11 +339,13 @@ _local_chann_tcpin_cb_front(chann_event_t *e) {
       else if (fc->state == LOCAL_CHANN_STATE_WAIT_LOCAL) 
       {
          if (buf_buffered(ib) >= TUNNEL_CMD_CONST_HEADER_LEN) {
-            uint8_t rs[3] = {0x05, 0x01, 0x00};
-            if ( _hex_equal(buf_addr(ib,hlen), buf_buffered(ib)-hlen, rs, 3) ) {
-
+            uint8_t rs1[3] = {0x05, 0x01, 0x00};
+            uint8_t rs2[3] = {0x05, 0x02, 0x00};
+            if (_hex_equal(buf_addr(ib,hlen), buf_buffered(ib)-hlen, rs1, 3) ||
+                _hex_equal(buf_addr(ib,hlen), buf_buffered(ib)-hlen, rs2, 3))
+            {
                if (tun->state == LOCAL_FRONT_STATE_AUTHORIZED) {
-                  //_verbose("(in) accept %p, %d\n", e->n, lst_count(tun->active_lst));
+                  _verbose("(in) accept %p, %d\n", e->n, lst_count(tun->active_lst));
                   fc->state = LOCAL_CHANN_STATE_ACCEPT;
                   _local_cmd_send_accept(e->n, 0);
                }
@@ -352,6 +353,9 @@ _local_chann_tcpin_cb_front(chann_event_t *e) {
                   _err("(in) not authorized, not allow connection !\n");
                   _local_cmd_send_accept(e->n, 2);
                }
+            }
+            else {
+               _err("(in) invalid socks5 cmd:%d\n", buf_buffered(ib));
             }
          }
          else {
@@ -380,7 +384,7 @@ _local_chann_tcpin_cb_front(chann_event_t *e) {
                   int port = (rd[5+dlen]<<8) | rd[6+dlen];
 
                   char addr[TUNNEL_DNS_DOMAIN_LEN] = {0};
-                  _err("(tcpin) chann %d:%d try connect [%s:%d]\n", fc->chann_id, fc->magic,
+                  _err("(in) chann %d:%d try connect [%s:%d]\n", fc->chann_id, fc->magic,
                        misc_fix_str_1024(domain, dlen), port);
 
                   strncpy(addr, domain, dlen);
@@ -399,11 +403,11 @@ _local_chann_tcpin_cb_front(chann_event_t *e) {
       buf_reset(ib);
    }
    else if (e->event == MNET_EVENT_DISCONNECT) {
-      _front_cmd_disconnect(fc);
       _local_chann_disconnect(fc);
    }
    else if (e->event == MNET_EVENT_CLOSE) {
-      _front_cmd_disconnect(fc);
+      _verbose("(in) chann %d:%d close, mnet\n", fc->chann_id, fc->magic);
+      _front_cmd_close(fc);
       _local_chann_close(fc);
    }
 }
@@ -424,13 +428,11 @@ _local_chann_of_cmd(tun_local_t *tun, tunnel_cmd_t *tcmd) {
 static void
 _local_tcpout_cb_front(chann_event_t *e) {
    tun_local_t *tun = _tun_local();
-
-
+   
    if (e->event == MNET_EVENT_RECV) {
       tunnel_cmd_t tcmd = {0, 0, 0, 0, NULL};
 
-      int i = 0;
-      for (; i<TUNNEL_CHANN_BUF_SIZE; i+=TUNNEL_CMD_CONST_HEADER_LEN) {
+      for (;;) {
          int ret = 0;
          buf_t *ob = tun->bufout;
 
@@ -447,7 +449,7 @@ _local_tcpout_cb_front(chann_event_t *e) {
          buf_forward_ptw(ob, ret);
 
          if (buf_buffered(ob) <= TUNNEL_CMD_CONST_HEADER_LEN) {
-            continue;
+            return;
          }
 
          if (tcmd.data_len != buf_buffered(ob)) {
@@ -464,12 +466,12 @@ _local_tcpout_cb_front(chann_event_t *e) {
             assert(0);
          }
 
+         tun->data_mark++;
+
          if (tcmd.cmd == TUNNEL_CMD_ECHO) {
-            _verbose("receive echo, reset buffer !\n");
+            _verbose("(out) receive echo\n");
             goto reset_buffer;
          }
-
-         tun->data_mark++;
 
          if (tun->state == LOCAL_FRONT_STATE_AUTHORIZED) {
          
@@ -495,12 +497,12 @@ _local_tcpout_cb_front(chann_event_t *e) {
                         char addr[TUNNEL_DNS_ADDR_LEN] = {0};
                         sprintf(addr, "%d.%d.%d.%d", d[0], d[1], d[2], d[3]);
                         
-                        _verbose("chann %d:%d connected %s:%d\n",
+                        _verbose("(out) chann %d:%d connected %s:%d\n",
                                  tcmd.chann_id, tcmd.magic, addr, port);
                      }
                      else {
                         _local_cmd_fail_to_connect(fc->tcpin);
-                        _verbose("chann %d:%d fail to connect, state:%d\n",
+                        _verbose("(out) chann %d:%d fail to connect, state:%d\n",
                                  tcmd.chann_id, tcmd.magic, fc->state);
                      }
                   }
@@ -523,13 +525,12 @@ _local_tcpout_cb_front(chann_event_t *e) {
                if (tcmd.payload[0] == 1) {
                   tun->state = LOCAL_FRONT_STATE_AUTHORIZED;
                }
-               _verbose("(front) got authority value %d\n", tcmd.payload[0]);
+               _verbose("(out) got authority value %d\n", tcmd.payload[0]);
             }
          }
         reset_buffer:
          buf_reset(ob);
       }
-      assert(i < TUNNEL_CHANN_BUF_SIZE);
    }
    else if (e->event == MNET_EVENT_CONNECTED) {
       unsigned char data[64] = {0};
@@ -556,11 +557,11 @@ _local_tcpout_cb_front(chann_event_t *e) {
 
       _front_send_remote_data(data, data_len);
 
-      _verbose("(front) connected, send auth request\n");
+      _verbose("(out) connected, send auth request\n");
       tun->state = LOCAL_FRONT_STATE_CONNECTED;
    }
    else if (e->event == MNET_EVENT_CLOSE) {
-      _verbose("(front) chann close\n");
+      _verbose("(out) chann close\n");
       tun->state = LOCAL_FRONT_STATE_NONE;
       lst_foreach(it, tun->active_lst) {
          tun_local_chann_t *c = (tun_local_chann_t*)lst_iter_data(it);
@@ -644,9 +645,10 @@ tunnel_local_close(void) {
    }
 }
 
-static inline void
+static inline time_t
 _local_update_ti() {
    _tun_local()->ti = time(NULL);
+   return _tun_local()->ti;
 }
 
 static void
@@ -665,35 +667,10 @@ _local_send_echo(tun_local_t *tun) {
    _front_send_remote_data(data, data_len);
    _local_update_ti();
 
-   _verbose("send echo\n");
+   _verbose("send echo state:%d buffered:%d\n",
+            mnet_chann_state(tun->tcpout), buf_buffered(tun->bufout));
 }
 
-static void
-_local_sig_timer(int sig) {
-   tun_local_t *tun = _tun_local();
-   tun->timer_active = 1;
-}
-
-#ifndef _WIN32
-static int
-_local_install_sig_timer() {
-   struct itimerval tick;
-   tick.it_value.tv_sec = 15;
-   tick.it_value.tv_usec = 0;
-   tick.it_interval.tv_sec = 15; /* 15 s */
-   tick.it_interval.tv_usec = 0;
-   if (signal(SIGALRM, _local_sig_timer) == SIG_ERR) {
-      fprintf(stderr, "Fail to install signal\n");
-      return 0;
-   }
-
-   if (setitimer(ITIMER_REAL, &tick, NULL) != 0) {
-      fprintf(stderr, "Fail to set timer\n");
-      return 0;
-   }
-   return 1;
-}
-#endif
 
 static void
 _local_conf_get_values(tunnel_local_config_t *conf, char *argv[]) {
@@ -747,7 +724,7 @@ _local_conf_get_values(tunnel_local_config_t *conf, char *argv[]) {
    utils_conf_close(cf);
 
    debug_open(dbg_fname);
-   debug_set_option(D_OPT_FILE | D_OPT_TIME);
+   debug_set_option(D_OPT_FILE);
    debug_set_level(D_VERBOSE);
 }
 
@@ -761,11 +738,6 @@ main(int argc, char *argv[]) {
 
 #ifndef _WIN32
    signal(SIGPIPE, SIG_IGN);
-
-   if (_local_install_sig_timer() <= 0) {
-      fprintf(stderr, "[local] fail to install sig timer !\n");
-      return 0;
-   }
 #endif
 
    tunnel_local_config_t conf = {TUNNEL_LOCAL_MODE_INVALID,0,0, "", ""};
@@ -780,28 +752,30 @@ main(int argc, char *argv[]) {
       if (tunnel_local_open(&conf) > 0) {
          tun_local_t *tun = _tun_local();
 
+         tun->last_ti = _local_update_ti();
          tun->key = mc_hash_key(conf.password, strlen(conf.password));
 
          for (int i=0;;i++) {
 
             if (i >= TUNNEL_CHANN_MAX_COUNT) {
-               i = 0;
-               mtime_sleep(1);
+               i = 0; mtime_sleep(1);
             }
 
             _local_update_ti();
-            mnet_poll( -1 );
+            mnet_poll( (1<<21) );
 
-            if (tun->timer_active && tun->mode==TUNNEL_LOCAL_MODE_FRONT) {
-               tun->timer_active = 0;
+            if (tun->mode == TUNNEL_LOCAL_MODE_FRONT) {
+               if (tun->ti - tun->last_ti > LOCAL_TIMEOUT_SECOND) {
+                  tun->last_ti = tun->ti;
 
-               if (tun->data_mark <= 0) {
-                  _local_send_echo(tun);
+                  if (tun->data_mark <= 0) {
+                     _local_send_echo(tun);
+                  }
+                  tun->data_mark = 0;
+
+                  mm_report(1);
+                  _verbose("channs count:%d\n", mnet_report(0));
                }
-               tun->data_mark = 0;
-
-               mm_report(1);
-               _verbose("channs count:%d\n", mnet_report(0));
             }
             else if (tun->reset_connection) {
                tun->reset_connection = 0;
