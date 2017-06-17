@@ -732,7 +732,7 @@ _evt_poll(int microseconds) {
 
             default:
                _err("invalid chann:%p, state:%d, events:%x, del_channs:%p\n",
-                    n, n->state, n->del_next, _kev_get_events(kev), ss->del_channs);
+                    n, n->state, _kev_get_events(kev), ss->del_channs);
                break;
          }
       }
