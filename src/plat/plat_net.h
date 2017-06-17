@@ -45,10 +45,11 @@ typedef struct {
 
 typedef void (*chann_cb)(chann_event_t*);
 
-/* support limited connections */
+/* init before use */
 int mnet_init(void);
 void mnet_fini(void);
 
+/* using poll to get data received/sended event */
 int mnet_poll(int microseconds);
 int mnet_report(int level);
 
