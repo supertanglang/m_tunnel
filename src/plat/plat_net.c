@@ -675,7 +675,7 @@ _evt_poll(int microseconds) {
          /* check error first */
          if ( _kev_flags(kev, (_KEV_FLAG_ERROR | _KEV_FLAG_HUP)) ) {
             if (_kev_flags(kev, _KEV_FLAG_ERROR)) { _err("chann %p got error: %d\n", n, _kev_errno(kev)); }
-            else { _info("chann %p got eof: %d\n", n, _kev_errno(kev)); }
+            else { _log("chann %p got eof: %d\n", n, _kev_errno(kev)); }
             _chann_close_socket(ss, n);
          }
 
