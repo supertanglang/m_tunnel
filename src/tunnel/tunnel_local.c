@@ -5,7 +5,6 @@
  * under the terms of the MIT license. See LICENSE for details.
  */
 
-#define _BSD_SOURCE             /* for daemon */
 #define _CRT_SECURE_NO_WARNINGS
 
 #include <stdio.h>
@@ -715,11 +714,6 @@ _local_conf_get_values(tunnel_local_config_t *conf, char *argv[]) {
       strncpy(conf->password, str_cstr(value), _MIN_OF(str_len(value), 32));
    }
 
-   value = utils_conf_value(cf, "RUN_DAEMON");
-   if (str_cmp(value, "YES", 0) == 0) {
-      //daemon(1, 0);
-   }
-   
   fail:
    utils_conf_close(cf);
 
