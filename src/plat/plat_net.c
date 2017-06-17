@@ -123,11 +123,13 @@ struct s_mchann {
 #endif
 };
 
+#if (MNET_OS_MACOX | MNET_OS_LINUX)
 struct s_event {
    int size;
    int count;
    mevent_t *array;
 };
+#endif
 
 typedef struct s_mnet {
    int init;
@@ -1080,7 +1082,9 @@ int mnet_chann_send(chann_t *n, void *buf, int len) {
          } else if (ret < len) {
             _rwb_cache(prh, ((char*)buf) + ret, len - ret);
             ret = len;
+#if (MNET_OS_MACOX | MNET_OS_LINUX)
             _evt_add(n, MNET_SET_WRITE);
+#endif
             _info("------------ cache %d of %d!\n", ret, len);
          }
       }
