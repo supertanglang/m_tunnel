@@ -984,13 +984,16 @@ mnet_chann_connect(chann_t *n, const char *host, int port) {
                n->state = CHANN_STATE_CONNECTING;
             }
             _log("chann %p fd:%d type:%d connecting...\n", n, fd, n->type);
+#if (MNET_OS_MACOX | MNET_OS_LINUX)
+            _evt_add(n, MNET_SET_WRITE);
+#endif
          } else {
             n->state = CHANN_STATE_CONNECTED;
             _log("chann %p fd:%d type:%d connected\n", n, fd, n->type);
-         }
 #if (MNET_OS_MACOX | MNET_OS_LINUX)
-         _evt_add(n, MNET_SET_WRITE);
+            _evt_add(n, MNET_SET_READ);
 #endif
+         }
          return 1;
       }
       _err("chann %p fail to connect\n", n);
