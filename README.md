@@ -10,6 +10,17 @@ using RC4 crypto from cloudwu's mptun https://github.com/cloudwu/mptun/.
 
 
 
+
+# Features
+
+- only one tcp connection between local and remote
+- authentication only once, speed up every request
+- socks5 proxy interface 
+- support Windows
+
+
+
+
 # QuickStart
 
 Download precompiled [Release](https://github.com/lalawue/m_tunnel/releases).
