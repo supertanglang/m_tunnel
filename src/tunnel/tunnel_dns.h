@@ -17,7 +17,4 @@ typedef void(*dns_query_callback)(char *addr, int addr_len, void *opaque);
 void dns_query_domain(
    const char *domain, int domain_len, dns_query_callback cb, void *opaque);
 
-/* void dns_save(void); */
-/* void dns_restore(const char *entry_path); */
-
 #endif

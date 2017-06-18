@@ -47,7 +47,7 @@
 #define _info(...) _mlog("dns", D_INFO, __VA_ARGS__)
 
 #ifndef DEF_TUNNEL_DNS_COUNT
-#define DEF_TUNNEL_DNS_COUNT 40960
+#define DEF_TUNNEL_DNS_COUNT 256
 #endif
 
 typedef struct {
@@ -74,7 +74,7 @@ _domain_stm_finalizer(void *ptr, void *ud) {
 
 static dns_t* _dns(void) {
    if (g_dns.entry_dict == NULL) {
-      g_dns.entry_dict = dict_create(DEF_TUNNEL_DNS_COUNT);
+      g_dns.entry_dict = dict_create(DEF_TUNNEL_DNS_COUNT, 0, NULL);
       g_dns.domain_stm = stm_create("dns_domain_cache", _domain_stm_finalizer, NULL);
       mthrd_after(MTHRD_AUX, _dns_mthrd_func, &g_dns, 0);
    }
@@ -92,8 +92,8 @@ _dns_entry_create(const char *domain, int domain_len, const char *addr, int addr
    strncpy(e->domain, domain, domain_len);
    strncpy(e->addr, addr, _MIN_OF(TUNNEL_DNS_ADDR_LEN, addr_len));
    e->date = _dns_date();
-   dict_set(dns->entry_dict, domain, domain_len, e);
-   _err("add dns entry [%s, %s], %d\n", e->domain, e->addr, e->date);
+   int ret = dict_set(dns->entry_dict, domain, domain_len, e);
+   _err("add dns entry [%s, %s], time:%d ret:%d\n", e->domain, e->addr, e->date, ret);
    return e;
 }
 
@@ -253,53 +253,3 @@ dns_query_domain(const char *domain, int domain_len, dns_query_callback cb, void
       stm_pushl(dns->domain_stm, e);
    }
 }
-
-#if 0
-void
-dns_save() {
-   dns_t *dns = _dns();
-   FILE *fp = fopen(dns->entry_path, "wb");
-   if ( fp ) {
-      dict_foreach(dns->entry_dict, _dns_enumerate_cb, fp);
-      fclose(fp);
-      _info("save dns record %d\n", dict_count(dns->entry_dict));
-   }
-}
-
-void dns_restore(const char *entry_path) {
-   dns_t *dns = _dns();
-
-   if (/*entry_path*/0) {
-      strcpy(dns->entry_path, entry_path);
-      
-      unsigned long flength = 0;
-      const char *dns_content = misc_read_file(entry_path, &flength);
-      if (dns_content) {
-         str_t *hstr = str_clone_cstr(dns_content, flength);
-         str_t *entries = str_split(hstr, "\n", 0);
-         if (entries) {
-            str_foreach(it, entries) {
-               str_t *se = str_split(it, ":", 0);
-               dns_entry_t *de = mm_malloc(sizeof(*de));
-
-               int domain_len = str_len(se);
-
-               strncpy(de->domain, str_cstr(se), domain_len); se=str_next(se);
-               strncpy(de->addr, str_cstr(se), str_len(se)); se=str_next(se);
-               de->date = atoi(str_cstr(se));
-
-               dict_set(dns->entry_dict, de->domain, domain_len, de);
-            }
-
-            _info("restore dns record %d in %d\n",
-                  dict_count(dns->entry_dict), (int)(mtime_current()>>20));
-         }
-         else {
-            _err("fail to split file content of %s!\n", entry_path);
-         }
-         str_destroy(hstr);
-         mm_free((void*)dns_content);
-      }
-   }
-}
-#endif

@@ -86,8 +86,8 @@ typedef struct {
 typedef struct {
    int running;
    time_t ti;
+   time_t last_ti;
    uint64_t key;
-   int timer_active;
    tunnel_remote_mode_t mode;
    tunnel_remote_config_t conf;
    chann_t *tcpin;
@@ -249,21 +249,18 @@ _remote_chann_disconnect(tun_remote_chann_t *rc) {
 }
 
 static tun_remote_chann_t*
-_remote_chann_of_id_magic_ex(tun_remote_client_t *c, int chann_id, int magic, char *file, int line) {
+_remote_chann_of_id_magic(tun_remote_client_t *c, int chann_id, int magic) {
    if (c) {
       if (chann_id>=0 && chann_id<TUNNEL_CHANN_MAX_COUNT) {
          tun_remote_chann_t *rc = c->channs[chann_id];
          if (rc && (rc->magic==magic)) {
             return rc;
          }
-         _err("invalid remote chann %d:%d, from %s:%d\n", chann_id, magic, file, line);
+         //_err("invalid remote chann %d:%d, from %s:%d\n", chann_id, magic, file, line);
       }
    }
    return NULL;
 }
-
-#define _remote_chann_of_id_magic(c, chann_id, magic) \
-   _remote_chann_of_id_magic_ex(c, chann_id, magic, __FILE__, __LINE__)
 
 static void
 _remote_aux_dns_cb(char *addr, int addr_len, void *opaque) {
@@ -370,9 +367,11 @@ _remote_send_connect_result(tun_remote_client_t *c, int chann_id, int magic, int
    /* _info("chann %p send chann [%d:%d] connection result %d\n", c, chann_id, magic, result); */
 }
 
-static inline void
+static inline time_t
 _remote_update_ti() {
-   _tun_remote()->ti = time(NULL);
+   time_t ti = time(NULL);
+   _tun_remote()->ti = ti;
+   return ti;
 }
 
 static void
@@ -688,12 +687,6 @@ tunnel_remote_close(void) {
 }
 #endif
 
-static void
-_remote_sig_timer(int sig) {
-   tun_remote_t *tun = _tun_remote();
-   tun->timer_active = 1;
-}
-
 static tun_remote_client_t*
 _remote_active_client(tun_remote_client_t *c) {
    tun_remote_t *tun = _tun_remote();
@@ -704,25 +697,6 @@ _remote_active_client(tun_remote_client_t *c) {
       }
    }
    return NULL;
-}
-
-static int
-_remote_install_sig_timer() {
-   struct itimerval tick;
-   tick.it_value.tv_sec = 60;
-   tick.it_value.tv_usec = 0;
-   tick.it_interval.tv_sec = 60; /* 60 s */
-   tick.it_interval.tv_usec = 0;
-   if (signal(SIGALRM, _remote_sig_timer) == SIG_ERR) {
-      fprintf(stderr, "Fail to install signal\n");
-      return 0;
-   }
-
-   if (setitimer(ITIMER_REAL, &tick, NULL) != 0) {
-      fprintf(stderr, "Fail to set timer\n");
-      return 0;
-   }
-   return 1;
 }
 
 static void
@@ -787,11 +761,6 @@ main(int argc, char *argv[]) {
 
    signal(SIGPIPE, SIG_IGN);
 
-   if (_remote_install_sig_timer() <= 0) {
-      fprintf(stderr, "[local] fail to install sig timer !\n");
-      return 0;
-   }
-
    tunnel_remote_config_t conf = {TUNNEL_REMOTE_MODE_INVALID, 0, 0, "", ""};
 
    _remote_conf_get_values(&conf, argv);
@@ -806,6 +775,7 @@ main(int argc, char *argv[]) {
       if (tunnel_remote_open(&conf) > 0) {
          tun_remote_t *tun = _tun_remote();
 
+         tun->last_ti = _remote_update_ti();
          tun->key = mc_hash_key(conf.password, strlen(conf.password));
 
          for (int i=0;;i++) {
@@ -854,8 +824,8 @@ main(int argc, char *argv[]) {
 
 
             /* mem report */
-            if (tun->timer_active > 0) {
-               tun->timer_active = 0;
+            if (tun->ti - tun->last_ti > 60) {
+               tun->last_ti = tun->ti;
                mm_report(1);
                _verbose("channs count:%d\n", mnet_report(0));
             }
