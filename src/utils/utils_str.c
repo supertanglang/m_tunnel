@@ -689,7 +689,7 @@ str_sub(str_t *m, int from, int to) {
 
 str_t*
 str_trim(str_t *m, char trim) {
-   if ( m ) {
+   if (m && str_len(m)>0) {
       char *p = m->cstr;
       int len = m->len;
       while ((len>0) && (*p == trim)) {
@@ -699,7 +699,9 @@ str_trim(str_t *m, char trim) {
       while ((len>0) && (p[len-1] == trim)) {
          len--;
       }
-      if (len > 0) {
+      if (len == m->len) {
+         return m;
+      } else if (len > 0) {
          return _child(m, str_clone_cstr(p, len));
       }
    }

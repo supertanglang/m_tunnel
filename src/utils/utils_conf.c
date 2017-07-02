@@ -15,6 +15,17 @@
 
 #define _err(...) do { printf("[conf] "); printf(__VA_ARGS__); } while (0)
 
+typedef struct {
+   str_t *key;
+   str_t *value;
+} conf_entry_t;
+
+struct s_conf {
+   lst_t *entry_lst;
+   void  *opaque_content;
+   void  *opaque_str;
+};
+
 conf_t*
 utils_conf_open(const char *conf_file) {
    //mm_report(2);
@@ -30,21 +41,27 @@ utils_conf_open(const char *conf_file) {
          if (fread(fcontent, flength, 1, fp) > 0) {
 
             lst_t *lst = lst_create();
-            str_t *h = str_split(str_clone_cstr(fcontent, flength), "\n", 0);
+            str_t *head = str_clone_cstr(fcontent, flength);
+            str_t *h = str_split(head, "\n", 0);
 
             if (h) {
-               str_foreach(it, h) {
-                  conf_entry_t *ce = (conf_entry_t*)mm_malloc(sizeof(*ce));
-                  str_t *se = str_split(it, "\t", 0);
-                  ce->key = se;
-                  ce->value = str_next(se);
-                  lst_pushl(lst, ce);
+               str_foreach(ith, h) {
+                  str_t *it = str_trim(ith, '\r');
+                  if (str_len(it)>0 || str_locate(it, "#", 0)>0) {
+                     int i = str_locate(it, "=", 0);
+                     if (i > 0) {
+                        conf_entry_t *ce = (conf_entry_t*)mm_malloc(sizeof(*ce));
+                        ce->key = str_sub(it, 0, i);
+                        ce->value = str_sub(it, i+1, str_len(it));
+                        lst_pushl(lst, ce);
+                     }
+                  }
                }
 
                cf = (conf_t*)mm_malloc(sizeof(*cf));
                cf->entry_lst = lst;
-               cf->opaque_0 = fcontent;
-               cf->opaque_1 = h;
+               cf->opaque_content = fcontent;
+               cf->opaque_str = head;
             }
             else {
                _err("empty conf file !\n");
@@ -70,8 +87,8 @@ utils_conf_open(const char *conf_file) {
 void
 utils_conf_close(conf_t *cf) {
    if (cf) {
-      mm_free(cf->opaque_0);
-      str_destroy((str_t*)cf->opaque_1);
+      mm_free(cf->opaque_content);
+      str_destroy((str_t*)cf->opaque_str);
       while (lst_count(cf->entry_lst) > 0) {
          mm_free(lst_popf(cf->entry_lst));
       }

@@ -47,4 +47,23 @@ in Windows, using VS2017 under vc dir.
 
 # Configure
 
-Under config dir, using \TAB to seperate key/value.
+Under config dir, something like:
+
+```
+# 
+DEBUG_FILE=stdout
+
+# as sock5 front
+LOCAL_MODE=FRONT
+
+# local ip address
+LOCAL_IP=127.0.0.1
+LOCAL_PORT=1080
+
+# remote ip address
+REMOTE_IP=192.168.2.101
+REMOTE_PORT=9871
+
+REMOTE_USERNAME=112233
+REMOTE_PASSWORD=123456
+```

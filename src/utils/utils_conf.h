@@ -11,16 +11,7 @@
 #include "m_list.h"
 #include "utils_str.h"
 
-typedef struct {
-   str_t *key;
-   str_t *value;
-} conf_entry_t;
-
-typedef struct {
-   lst_t *entry_lst;
-   void  *opaque_0;
-   void  *opaque_1;
-} conf_t;
+typedef struct s_conf conf_t;
 
 conf_t* utils_conf_open(const char *conf_file);
 void utils_conf_close(conf_t*);
