@@ -523,8 +523,8 @@ _local_tcpout_cb_front(chann_event_t *e) {
             if (tcmd.cmd == TUNNEL_CMD_AUTH) {
                if (tcmd.payload[0] == 1) {
                   tun->state = LOCAL_FRONT_STATE_AUTHORIZED;
+                  _verbose("(out) got authority value %d\n", tcmd.payload[0]);
                }
-               _verbose("(out) got authority value %d\n", tcmd.payload[0]);
             }
          }
         reset_buffer:
