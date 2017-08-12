@@ -119,7 +119,7 @@ _dict_expand(dict_t *d) {
       memset(d->kv_cache, 0, capacity * sizeof(dict_kv_t*));
 
       lst_foreach(it, d->kv_lst) {
-         dict_kv_t *kv = lst_iter_data(it);
+         dict_kv_t *kv = (dict_kv_t*)lst_iter_data(it);
          _dict_update_index(d, kv);
       }
    }
