@@ -24,6 +24,7 @@ typedef struct {
    char remote_ipaddr[16];
    char username[32];
    char password[32];
+   int crypto_rc4;
 } tunnel_local_config_t;
 
 int tunnel_local_open(tunnel_local_config_t*);

@@ -214,43 +214,52 @@ static int
 _front_send_remote_data(unsigned char *buf, int buf_len) {
    tun_local_t *tun = _tun_local();
 
+   if (tun->conf.crypto_rc4) {
+
 #ifdef DEF_TUNNEL_SIMPLE_CRYPTO
-   mc_enc_exp(&buf[3], buf_len-3);
-   return mnet_chann_send(tun->tcpout, buf, buf_len);
+      mc_enc_exp(&buf[3], buf_len-3);
+      return mnet_chann_send(tun->tcpout, buf, buf_len);
 #else
-   char *tbuf = (char*)buf_addr(tun->buftmp,0);
+      char *tbuf = (char*)buf_addr(tun->buftmp,0);
 
-   int data_len = mc_encrypt((char*)&buf[3], buf_len-3, &tbuf[3], tun->key, tun->ti);
-   assert(data_len > 0);
+      int data_len = mc_encrypt((char*)&buf[3], buf_len-3, &tbuf[3], tun->key, tun->ti);
+      assert(data_len > 0);
 
-   tunnel_cmd_data_len((unsigned char*)tbuf, 1, data_len + 3);
-   return mnet_chann_send(tun->tcpout, tbuf, data_len + 3);
+      tunnel_cmd_data_len((unsigned char*)tbuf, 1, data_len + 3);
+      return mnet_chann_send(tun->tcpout, tbuf, data_len + 3);
 #endif
+   }
+   else {
+      return mnet_chann_send(tun->tcpout, buf, buf_len);
+   }
 }
 
 static int
 _front_recv_remote_data(buf_t *b) {
-   char *buf = (char*)buf_addr(b,0);
-   int buf_len = buf_buffered(b);
+   tun_local_t *tun = _tun_local();
+
+   if (tun->conf.crypto_rc4) {
+      char *buf = (char*)buf_addr(b,0);
+      int buf_len = buf_buffered(b);
 
 #ifdef DEF_TUNNEL_SIMPLE_CRYPTO
-   mc_dec_exp((unsigned char*)&buf[3], buf_len-3);
+      mc_dec_exp((unsigned char*)&buf[3], buf_len-3);
 #else
-   tun_local_t *tun = _tun_local();
-   char *tbuf = (char*)buf_addr(tun->buftmp,0);
+      char *tbuf = (char*)buf_addr(tun->buftmp,0);
 
-   int data_len = mc_decrypt(&buf[3], buf_len-3, tbuf, tun->key, tun->ti);
-   if (data_len <= 0) {
-      _err("invalid data_len !\n");
-      return 0;
-   }
+      int data_len = mc_decrypt(&buf[3], buf_len-3, tbuf, tun->key, tun->ti);
+      if (data_len <= 0) {
+         _err("invalid data_len !\n");
+         return 0;
+      }
 
-   memcpy(&buf[3], tbuf, data_len);
-   tunnel_cmd_data_len((unsigned char*)buf, 1, data_len + 3);
+      memcpy(&buf[3], tbuf, data_len);
+      tunnel_cmd_data_len((unsigned char*)buf, 1, data_len + 3);
 
-   buf_reset(b);
-   buf_forward_ptw(b, data_len + 3);
+      buf_reset(b);
+      buf_forward_ptw(b, data_len + 3);
 #endif
+   }
    return 1;
 }
 
@@ -712,6 +721,13 @@ _local_conf_get_values(tunnel_local_config_t *conf, char *argv[]) {
    value = utils_conf_value(cf, "REMOTE_PASSWORD");
    if (value) {
       strncpy(conf->password, str_cstr(value), _MIN_OF(str_len(value), 32));
+   }
+
+   value = utils_conf_value(cf, "CRYPTO_RC4");
+   if (value && str_cmp(value, "NO", 0)==0) {
+      conf->crypto_rc4 = 0;
+   } else {
+      conf->crypto_rc4 = 1;
    }
 
   fail:

@@ -22,6 +22,7 @@ typedef struct {
    char forward_ipaddr[16];   
    char username[32];
    char password[32];
+   int crypto_rc4;
 } tunnel_remote_config_t;
 
 int tunnel_remote_open(tunnel_remote_config_t*);
