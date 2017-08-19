@@ -138,18 +138,6 @@ _local_chann_open(chann_t *r) {
    /*          lst_count(tun->active_lst), lst_count(tun->free_lst)); */
 }
 
-/* description: only shut down mnet socket, but keep local active */
-static void
-_local_chann_disconnect(tun_local_chann_t *c) {
-   if (c->state > LOCAL_CHANN_STATE_DISCONNECT) {
-      /* _verbose("chann %d:%d disconnect %d\n", */
-      /*          c->chann_id, c->magic, mnet_chann_state(c->tcpin)); */
-
-      mnet_chann_disconnect(c->tcpin);
-      c->state = LOCAL_CHANN_STATE_DISCONNECT;
-   }
-}
-
 /* description: free local resources
  */
 static void
@@ -394,15 +382,13 @@ _local_chann_tcpin_cb_front(chann_event_t *e) {
                }
             }
          }
-         else {
-            assert(0);
-         }
       }
 
       buf_reset(ib);
    }
-   else if (e->event == MNET_EVENT_DISCONNECT) {
-      _local_chann_disconnect(fc);
+   else if (e->event == MNET_EVENT_DISCONNECT ||
+            e->event == MNET_EVENT_ERROR)
+   {
       _verbose("(in) chann %d:%d close, mnet\n", fc->chann_id, fc->magic);
       _front_cmd_close(fc);
       _local_chann_close(fc);
@@ -510,7 +496,7 @@ _local_tcpout_cb_front(chann_event_t *e) {
                else if (tcmd.cmd == TUNNEL_CMD_CLOSE)
                {
                   /* _verbose("chann %d close cmd %d\n", tcmd.chann_id, tcmd.payload[0]); */
-                  _local_chann_disconnect(fc);
+                  _local_chann_close(fc);
                }
                else {
                   /* _err("chann %d err cmd %d\n", tcmd.chann_id, tcmd.cmd); */
@@ -562,7 +548,7 @@ _local_tcpout_cb_front(chann_event_t *e) {
       tun->state = LOCAL_FRONT_STATE_NONE;
       lst_foreach(it, tun->active_lst) {
          tun_local_chann_t *c = (tun_local_chann_t*)lst_iter_data(it);
-         _local_chann_disconnect(c);
+         _local_chann_close(c);
       }
    }
 }
@@ -624,11 +610,9 @@ tunnel_local_close(void) {
    if (tun->running) {
       while (lst_count(tun->active_lst) > 0) {
          tun_local_chann_t *c = (tun_local_chann_t*)lst_popf(tun->active_lst);
-         _local_chann_disconnect(c);
+         _local_chann_close(c);
       }
       lst_destroy(tun->active_lst);
-      mnet_chann_set_cb(tun->tcpin, NULL, NULL);
-      mnet_chann_close(tun->tcpin);
 
       if (tun->mode == TUNNEL_LOCAL_MODE_FRONT) {
          buf_destroy(tun->bufout);
