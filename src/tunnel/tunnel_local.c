@@ -27,6 +27,7 @@
 #include "m_buf.h"
 #include "m_list.h"
 #include "m_debug.h"
+#include "m_rc4.h"
 
 #include "plat_type.h"
 #include "plat_net.h"
@@ -39,7 +40,6 @@
 #include "tunnel_cmd.h"
 #include "tunnel_dns.h"
 #include "tunnel_local.h"
-#include "tunnel_crypto.h"
 
 #include <assert.h>
 
@@ -218,7 +218,7 @@ _front_send_remote_data(unsigned char *buf, int buf_len) {
 
       char *tbuf = (char*)buf_addr(tun->buftmp,0);
 
-      int data_len = mc_encrypt((char*)&buf[3], buf_len-3, &tbuf[3], tun->key, tun->ti);
+      int data_len = rc4_encrypt((char*)&buf[3], buf_len-3, &tbuf[3], buf_len(tun->buftmp)-3, tun->key, tun->ti);
       assert(data_len > 0);
 
       tunnel_cmd_data_len((unsigned char*)tbuf, 1, data_len + 3);
@@ -239,7 +239,7 @@ _front_recv_remote_data(buf_t *b) {
 
       char *tbuf = (char*)buf_addr(tun->buftmp,0);
 
-      int data_len = mc_decrypt(&buf[3], buf_len-3, tbuf, tun->key, tun->ti);
+      int data_len = rc4_decrypt(&buf[3], buf_len-3, tbuf, buf_len(tun->buftmp), tun->key, tun->ti);
       if (data_len <= 0) {
          _err("invalid data_len !\n");
          return 0;
@@ -752,7 +752,7 @@ main(int argc, char *argv[]) {
          tun_local_t *tun = _tun_local();
 
          tun->last_ti = _local_update_ti();
-         tun->key = mc_hash_key(conf.password, strlen(conf.password));
+         tun->key = rc4_hash_key(conf.password, strlen(conf.password));
 
          for (int i=0;;i++) {
 
