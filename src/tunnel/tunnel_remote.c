@@ -225,7 +225,7 @@ _remote_chann_close(tun_remote_chann_t *rc) {
                mnet_chann_state(rc->tcpout), lst_count(c->active_lst), lst_count(c->free_lst));
 
       mnet_chann_set_cb(rc->tcpout, NULL, NULL);
-      _remote_chann_disconnect(rc);
+      mnet_chann_close(rc->tcpout);
 
       c->channs[rc->chann_id] = NULL;
       rc->chann_id = 0;

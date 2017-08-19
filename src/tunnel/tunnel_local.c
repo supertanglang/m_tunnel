@@ -160,7 +160,7 @@ _local_chann_close(tun_local_chann_t *c) {
                mnet_chann_state(c->tcpin), lst_count(tun->active_lst), lst_count(tun->free_lst));
 
       mnet_chann_set_cb(c->tcpin, NULL, NULL);
-      _local_chann_disconnect(c);
+      mnet_chann_close(c->tcpin);
 
       tun->channs[c->chann_id] = NULL;
       lst_remove(tun->active_lst, c->node);
