@@ -412,8 +412,6 @@ _local_chann_tcpin_cb_front(chann_event_t *e) {
    }
    else if (e->event == MNET_EVENT_DISCONNECT) {
       _local_chann_disconnect(fc);
-   }
-   else if (e->event == MNET_EVENT_CLOSE) {
       _verbose("(in) chann %d:%d close, mnet\n", fc->chann_id, fc->magic);
       _front_cmd_close(fc);
       _local_chann_close(fc);
@@ -568,7 +566,7 @@ _local_tcpout_cb_front(chann_event_t *e) {
       _verbose("(out) connected, send auth request\n");
       tun->state = LOCAL_FRONT_STATE_CONNECTED;
    }
-   else if (e->event == MNET_EVENT_CLOSE) {
+   else if (e->event == MNET_EVENT_DISCONNECT) {
       _verbose("(out) chann close\n");
       tun->state = LOCAL_FRONT_STATE_NONE;
       lst_foreach(it, tun->active_lst) {

@@ -4,7 +4,12 @@ CFLAGS= -g -Wall -std=c99 -Wdeprecated-declarations
 LIBS= -lpthread -lc
 
 SRCS := $(shell find src -name "*.c")
+SRCS += $(shell find vendor/m_net -name "*.c")
+SRCS += $(shell find vendor/m_foundation -name "*.c")
+
 DIRS := $(shell find src -type d)
+DIRS += $(shell find vendor/m_net -type d)
+DIRS += $(shell find vendor/m_foundation -type d)
 
 INCS := $(foreach n, $(DIRS), -I$(n))
 

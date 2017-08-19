@@ -576,7 +576,7 @@ _remote_tcpin_cb(chann_event_t *e) {
          buf_reset(ib);
       }
    }
-   else if (e->event == MNET_EVENT_CLOSE) {
+   else if (e->event == MNET_EVENT_DISCONNECT) {
       _verbose("client %p close event !\n", c);
       lst_pushl(_tun_remote()->leave_lst, c);
    }
@@ -626,8 +626,6 @@ _remote_tcpout_cb(chann_event_t *e) {
    else if (e->event == MNET_EVENT_DISCONNECT) {
       /* _verbose("chann %d:%d disconnect\n", rc->chann_id, rc->magic); */
       _remote_chann_disconnect(rc);
-   }
-   else if (e->event == MNET_EVENT_CLOSE) {
       _verbose("(out) chann %d:%d close, mnet\n", rc->chann_id, rc->magic);
       _remote_send_close(c, rc, 1);
       _remote_chann_close(rc);
