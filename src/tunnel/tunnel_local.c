@@ -216,10 +216,6 @@ _front_send_remote_data(unsigned char *buf, int buf_len) {
 
    if (tun->conf.crypto_rc4) {
 
-#ifdef DEF_TUNNEL_SIMPLE_CRYPTO
-      mc_enc_exp(&buf[3], buf_len-3);
-      return mnet_chann_send(tun->tcpout, buf, buf_len);
-#else
       char *tbuf = (char*)buf_addr(tun->buftmp,0);
 
       int data_len = mc_encrypt((char*)&buf[3], buf_len-3, &tbuf[3], tun->key, tun->ti);
@@ -227,7 +223,6 @@ _front_send_remote_data(unsigned char *buf, int buf_len) {
 
       tunnel_cmd_data_len((unsigned char*)tbuf, 1, data_len + 3);
       return mnet_chann_send(tun->tcpout, tbuf, data_len + 3);
-#endif
    }
    else {
       return mnet_chann_send(tun->tcpout, buf, buf_len);
@@ -242,9 +237,6 @@ _front_recv_remote_data(buf_t *b) {
       char *buf = (char*)buf_addr(b,0);
       int buf_len = buf_buffered(b);
 
-#ifdef DEF_TUNNEL_SIMPLE_CRYPTO
-      mc_dec_exp((unsigned char*)&buf[3], buf_len-3);
-#else
       char *tbuf = (char*)buf_addr(tun->buftmp,0);
 
       int data_len = mc_decrypt(&buf[3], buf_len-3, tbuf, tun->key, tun->ti);
@@ -258,7 +250,6 @@ _front_recv_remote_data(buf_t *b) {
 
       buf_reset(b);
       buf_forward_ptw(b, data_len + 3);
-#endif
    }
    return 1;
 }
