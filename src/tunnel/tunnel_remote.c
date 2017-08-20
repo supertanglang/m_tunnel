@@ -57,15 +57,15 @@ typedef enum {
 typedef struct {
    char addr[TUNNEL_DNS_ADDR_LEN];
    int port;
-   int chann_id;
-   int magic;
+   u16 chann_id;
+   u16 magic;
    void *opaque;
 } dns_query_t;
 
 typedef struct {
    remote_chann_state_t state;
-   int chann_id;                /* chann id in slots */
-   int magic;                   /* from local chann magic */
+   u16 chann_id;                /* chann id in slots */
+   u16  magic;                  /* from local chann magic */
    chann_t *tcpout;
    buf_t *bufout;
    lst_node_t *node;            /* node in active_lst */
@@ -109,7 +109,7 @@ static inline tun_remote_t* _tun_remote(void) {
 }
 
 static dns_query_t*
-_dns_query_create(int port, int chann_id, int magic, void *opaque) {
+_dns_query_create(int port, u16 chann_id, u16 magic, void *opaque) {
    dns_query_t *q = (dns_query_t*)mm_malloc(sizeof(*q));
    q->port = port;
    q->chann_id = chann_id;
@@ -134,8 +134,8 @@ _remote_client_create(chann_t *n) {
    c->free_lst = lst_create();
    c->want_lst = lst_create();
    c->node = lst_pushl(tun->clients_lst, c);
+   mnet_chann_set_bufsize(n, 512 * 1024);
    mnet_chann_set_cb(n, _remote_tcpin_cb, c);
-   //_verbose("client create %p(%p), %d\n", c, c->tcpin, lst_count(tun->clients_lst));
    return c;
 }
 
@@ -202,8 +202,6 @@ _remote_chann_open(tun_remote_client_t *c, tunnel_cmd_t *tcmd, char *addr, int p
    buf_reset(rc->bufout);
 
    if (mnet_chann_connect(rc->tcpout, addr, port) > 0) {
-      /* _verbose("chann %d:%d open, [a:%d, f:%d]\n", rc->chann_id, rc->magic, */
-      /*          lst_count(c->active_lst), lst_count(c->free_lst)); */
       if (mnet_chann_state(rc->tcpout) == CHANN_STATE_CONNECTED) {
          rc->state = REMOTE_CHANN_STATE_CONNECTED;
       } else {
@@ -211,7 +209,7 @@ _remote_chann_open(tun_remote_client_t *c, tunnel_cmd_t *tcmd, char *addr, int p
       }
       return rc;
    }
-   _err("chann fail to open %d, %p\n", tcmd->chann_id, c);
+   _err("chann fail to open %u, %p\n", tcmd->chann_id, c);
    return NULL;
 }
 
@@ -219,7 +217,7 @@ void
 _remote_chann_close(tun_remote_chann_t *rc) {
    tun_remote_client_t *c = (tun_remote_client_t*)rc->client;
    if (rc->node) {
-      _verbose("chann %p %d:%d close state:%d (a:%d,f:%d)\n",rc->tcpout, rc->chann_id, rc->magic,
+      _verbose("chann %p %u:%u close state:%d (a:%d,f:%d)\n",rc->tcpout, rc->chann_id, rc->magic,
                mnet_chann_state(rc->tcpout), lst_count(c->active_lst), lst_count(c->free_lst));
 
       mnet_chann_set_cb(rc->tcpout, NULL, NULL);
@@ -237,14 +235,13 @@ _remote_chann_close(tun_remote_chann_t *rc) {
 }
 
 static tun_remote_chann_t*
-_remote_chann_of_id_magic(tun_remote_client_t *c, int chann_id, int magic) {
+_remote_chann_of_id_magic(tun_remote_client_t *c, u16 chann_id, u16 magic) {
    if (c) {
       if (chann_id>=0 && chann_id<TUNNEL_CHANN_MAX_COUNT) {
          tun_remote_chann_t *rc = c->channs[chann_id];
          if (rc && (rc->magic==magic)) {
             return rc;
          }
-         //_err("invalid remote chann %d:%d, from %s:%d\n", chann_id, magic, file, line);
       }
    }
    return NULL;
@@ -266,22 +263,26 @@ _remote_aux_dns_cb(char *addr, int addr_len, void *opaque) {
 }
 
 static int
-_remote_send_front_data(tun_remote_client_t *c, unsigned char *buf, int buf_len) {
+_remote_send_front_data(tun_remote_client_t *c, unsigned char *buf, u16 buf_len) {
    tun_remote_t *tun = _tun_remote();
 
    if (tun->conf.crypto_rc4) {
 
       char *tbuf = (char*)buf_addr(tun->buftmp,0);
+      int base = TUNNEL_CMD_CONST_DATA_LEN_OFFSET;
 
-      int data_len = rc4_encrypt((char*)&buf[3], buf_len-3, &tbuf[3], buf_len(tun->buftmp)-3, tun->key, tun->ti);
-      assert(data_len > 0);
-
-      tunnel_cmd_data_len((void*)tbuf, 1, data_len + 3);   
-      return mnet_chann_send(c->tcpin, tbuf, data_len + 3);
+      u16 data_len = rc4_encrypt((char*)&buf[base], buf_len - base,
+                                 &tbuf[base], buf_len(tun->buftmp)-base,
+                                 tun->key, tun->ti);
+      if (data_len > 0) {
+         tunnel_cmd_data_len((void*)tbuf, 1, data_len + base);
+         return mnet_chann_send(c->tcpin, tbuf, data_len + base);
+      }
    }
    else {
       return mnet_chann_send(c->tcpin, buf, buf_len);      
    }
+   return 0;
 }
 
 static int
@@ -293,28 +294,31 @@ _remote_recv_front_data(tun_remote_client_t *c, buf_t *b) {
       int buf_len = buf_buffered(b);
 
       char *tbuf = (char*)buf_addr(tun->buftmp,0);
+      int base = TUNNEL_CMD_CONST_DATA_LEN_OFFSET;      
 
-      int data_len = rc4_decrypt(&buf[3], buf_len-3, tbuf, buf_len(tun->buftmp), tun->key, tun->ti);
+      u16 data_len = rc4_decrypt(&buf[base], buf_len-base,
+                                 tbuf, buf_len(tun->buftmp),
+                                 tun->key, tun->ti);
       if (data_len <= 0) {
          _err("invalid data_len !\n");
          return 0;
       }
 
-      memcpy(&buf[3], tbuf, data_len);
-      tunnel_cmd_data_len((void*)buf, 1, data_len + 3);
+      memcpy(&buf[base], tbuf, data_len);
+      tunnel_cmd_data_len((void*)buf, 1, data_len + base);
 
       buf_reset(b);
-      buf_forward_ptw(b, data_len + 3);
+      buf_forward_ptw(b, data_len + base);
    }
    return 1;
 }
 
 static void
-_remote_send_connect_result(tun_remote_client_t *c, int chann_id, int magic, int result) {
+_remote_send_connect_result(tun_remote_client_t *c, u16 chann_id, u16 magic, int result) {
    unsigned char data[32] = {0};
 
-   int hlen = TUNNEL_CMD_CONST_HEADER_LEN;
-   int data_len = hlen + 7;
+   u16 hlen = TUNNEL_CMD_CONST_HEADER_LEN;
+   u16 data_len = hlen + 7;
 
    tunnel_cmd_data_len(data, 1, data_len);
    tunnel_cmd_chann_id(data, 1, chann_id);
@@ -334,25 +338,16 @@ _remote_send_connect_result(tun_remote_client_t *c, int chann_id, int magic, int
          char *addr_str = mnet_chann_addr(rc->tcpout);
          misc_hex_addr(addr_str, strlen(addr_str), &data[hlen+3], 4);
 
-#if 0
-         {
-            unsigned char *d = &data[hlen + 3];
-            _verbose("chann %d:%d connected [%s:%d], [%d.%d.%d.%d:%d]\n",
-                     chann_id, magic, addr_str, port, d[0], d[1], d[2], d[3], port);
-         }
-#endif
       } else {
-         _err("fail to get connect result %d:%d\n", chann_id, magic);
+         _err("fail to get connect result %u:%u\n", chann_id, magic);
          data[hlen] = 0;
       }
    }
 
    int ret = _remote_send_front_data(c, data, data_len);
    if (ret < data_len) {
-      _err("fail to send connect result %d, %d!\n", ret, data_len);
+      _err("fail to send connect result %d, %u!\n", ret, data_len);
    }
-         
-   /* _info("chann %p send chann [%d:%d] connection result %d\n", c, chann_id, magic, result); */
 }
 
 static inline time_t
@@ -365,7 +360,7 @@ _remote_update_ti() {
 static void
 _remote_send_echo(tun_remote_client_t *c) {
    unsigned char data[32] = {0};
-   int data_len = TUNNEL_CMD_CONST_HEADER_LEN + 1;
+   u16 data_len = TUNNEL_CMD_CONST_HEADER_LEN + 1;
    memset(data, 0, sizeof(data));
 
    tunnel_cmd_data_len(data, 1, data_len);
@@ -384,7 +379,7 @@ static void
 _remote_send_close(tun_remote_client_t *c, tun_remote_chann_t *rc, int result) {
    unsigned char data[16] = {0};
 
-   int data_len = TUNNEL_CMD_CONST_HEADER_LEN + 1;
+   u16 data_len = TUNNEL_CMD_CONST_HEADER_LEN + 1;
 
    tunnel_cmd_data_len(data, 1, data_len);
    tunnel_cmd_chann_id(data, 1, rc->chann_id);
@@ -482,7 +477,7 @@ _remote_tcpin_cb(chann_event_t *e) {
                   char addr[TUNNEL_DNS_ADDR_LEN] = {0};
 
                   strcpy(addr, (const char*)&payload[3]);
-                  _verbose("chann %d:%d try connect ip [%s:%d], %d\n", tcmd.chann_id,
+                  _verbose("chann %u:%u try connect ip [%s:%d], %d\n", tcmd.chann_id,
                            tcmd.magic, addr, port, strlen(addr));
 
                   tun_remote_chann_t *rc = _remote_chann_open(c, &tcmd, addr, port);
@@ -495,7 +490,7 @@ _remote_tcpin_cb(chann_event_t *e) {
                   char domain[TUNNEL_DNS_DOMAIN_LEN] = {0};
 
                   strcpy(domain, (const char*)&payload[3]);
-                  _verbose("chann %d:%d query domain [%s:%d], %d\n",
+                  _verbose("chann %u:%u query domain [%s:%d], %d\n",
                            tcmd.chann_id, tcmd.magic, domain, port, strlen(addr));
 
                   tunnel_cmd_t *ptcmd = (tunnel_cmd_t*)mm_malloc(sizeof(tunnel_cmd_t));
@@ -518,7 +513,7 @@ _remote_tcpin_cb(chann_event_t *e) {
          else {
             if (tcmd.cmd == TUNNEL_CMD_AUTH) {
                unsigned char data[64] = {0};
-               int data_len = TUNNEL_CMD_CONST_HEADER_LEN + 1;
+               u16 data_len = TUNNEL_CMD_CONST_HEADER_LEN + 1;
 
                int auth_type = tcmd.payload[0];
             
@@ -580,7 +575,8 @@ _remote_tcpout_cb(chann_event_t *e) {
          if (ret <= 0) {
             return;
          }
-         int data_len = ret + hlen;
+
+         u16 data_len = ret + hlen;
          buf_forward_ptw(ob, data_len);
 
          unsigned char *data = buf_addr(ob,0);
@@ -597,7 +593,7 @@ _remote_tcpout_cb(chann_event_t *e) {
    }
    else if (e->event == MNET_EVENT_CONNECTED) {
       if (rc->state < REMOTE_CHANN_STATE_CONNECTED) {
-         _verbose("(out) chann %p %d:%d connected\n", rc->tcpout, rc->chann_id, rc->magic);
+         _verbose("(out) chann %p %u:%u connected\n", rc->tcpout, rc->chann_id, rc->magic);
          rc->state = REMOTE_CHANN_STATE_CONNECTED;
          _remote_send_connect_result(c, rc->chann_id, rc->magic, 1);
       }
@@ -605,8 +601,7 @@ _remote_tcpout_cb(chann_event_t *e) {
    else if (e->event == MNET_EVENT_DISCONNECT ||
             e->event == MNET_EVENT_ERROR)
    {
-      /* _verbose("chann %d:%d disconnect\n", rc->chann_id, rc->magic); */
-      _verbose("(out) chann %d:%d close, mnet\n", rc->chann_id, rc->magic);
+      _verbose("(out) chann %u:%u close, mnet\n", rc->chann_id, rc->magic);
       _remote_send_close(c, rc, 1);
       _remote_chann_close(rc);
    }

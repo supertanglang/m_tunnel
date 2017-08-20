@@ -47,7 +47,7 @@
 #define _info(...) _mlog("dns", D_INFO, __VA_ARGS__)
 
 #ifndef DEF_TUNNEL_DNS_COUNT
-#define DEF_TUNNEL_DNS_COUNT 256
+#define DEF_TUNNEL_DNS_COUNT 512
 #endif
 
 typedef struct {

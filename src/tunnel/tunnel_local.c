@@ -70,8 +70,8 @@ typedef enum {
 
 typedef struct {
    local_chann_state_t state;
-   int chann_id;                /* chann id in slots  */
-   int magic;                   /* unique chann magic in chann slots */
+   u16 chann_id;                /* chann id in slots  */
+   u16 magic;                    /* unique chann magic in chann slots */
    chann_t *tcpin;              /* for input */
    buf_t *bufin;                /* buf for input */
    lst_node_t *node;            /* node in active_list */
@@ -83,8 +83,8 @@ typedef struct {
    time_t last_ti;
    uint64_t key;
    int data_mark;
-   int chann_idx;
-   int magic_code;
+   u16 chann_idx;
+   u16 magic_code;
    tunnel_local_mode_t mode;
    local_front_state_t state;
    tunnel_local_config_t conf;
@@ -134,8 +134,6 @@ _local_chann_open(chann_t *r) {
       c->state = LOCAL_CHANN_STATE_WAIT_LOCAL; /* wait local connect cmd */
       mnet_chann_set_cb(c->tcpin, _local_chann_tcpin_cb_front, c);
    }
-   /* _verbose("chann %d:%d open, [a:%d,f:%d]\n", c->chann_id, c->magic, */
-   /*          lst_count(tun->active_lst), lst_count(tun->free_lst)); */
 }
 
 /* description: free local resources
@@ -144,7 +142,7 @@ static void
 _local_chann_close(tun_local_chann_t *c) {
    tun_local_t *tun = _tun_local();
    if (c->node) {
-      _verbose("chann %p %d:%d close, state:%d (a:%d,f:%d)\n", c->tcpin, c->chann_id, c->magic,
+      _verbose("chann %p %u:%u close, state:%d (a:%d,f:%d)\n", c->tcpin, c->chann_id, c->magic,
                mnet_chann_state(c->tcpin), lst_count(tun->active_lst), lst_count(tun->free_lst));
 
       mnet_chann_set_cb(c->tcpin, NULL, NULL);
@@ -199,22 +197,26 @@ _local_cmd_send_connected(tun_local_chann_t *c, uint8_t *addr, int port) {
 }
 
 static int
-_front_send_remote_data(unsigned char *buf, int buf_len) {
+_front_send_remote_data(unsigned char *buf, u16 buf_len) {
    tun_local_t *tun = _tun_local();
 
    if (tun->conf.crypto_rc4) {
 
       char *tbuf = (char*)buf_addr(tun->buftmp,0);
+      int base = TUNNEL_CMD_CONST_DATA_LEN_OFFSET;
 
-      int data_len = rc4_encrypt((char*)&buf[3], buf_len-3, &tbuf[3], buf_len(tun->buftmp)-3, tun->key, tun->ti);
-      assert(data_len > 0);
-
-      tunnel_cmd_data_len((unsigned char*)tbuf, 1, data_len + 3);
-      return mnet_chann_send(tun->tcpout, tbuf, data_len + 3);
+      u16 data_len = rc4_encrypt((char*)&buf[base], buf_len - base,
+                                 &tbuf[base], buf_len(tun->buftmp)-base,
+                                 tun->key, tun->ti);
+      if (data_len > 0) {
+         tunnel_cmd_data_len((u8*)tbuf, 1, data_len + base);
+         return mnet_chann_send(tun->tcpout, tbuf, data_len + base);
+      }
    }
    else {
       return mnet_chann_send(tun->tcpout, buf, buf_len);
    }
+   return 0;
 }
 
 static int
@@ -226,18 +228,20 @@ _front_recv_remote_data(buf_t *b) {
       int buf_len = buf_buffered(b);
 
       char *tbuf = (char*)buf_addr(tun->buftmp,0);
+      int base = TUNNEL_CMD_CONST_DATA_LEN_OFFSET;
 
-      int data_len = rc4_decrypt(&buf[3], buf_len-3, tbuf, buf_len(tun->buftmp), tun->key, tun->ti);
+      u16 data_len = rc4_decrypt(&buf[base], buf_len-base,
+                                 tbuf, buf_len(tun->buftmp), tun->key, tun->ti);
       if (data_len <= 0) {
          _err("invalid data_len !\n");
          return 0;
       }
 
-      memcpy(&buf[3], tbuf, data_len);
-      tunnel_cmd_data_len((unsigned char*)buf, 1, data_len + 3);
+      memcpy(&buf[base], tbuf, data_len);
+      tunnel_cmd_data_len((u8*)buf, 1, data_len + base);
 
       buf_reset(b);
-      buf_forward_ptw(b, data_len + 3);
+      buf_forward_ptw(b, data_len + base);
    }
    return 1;
 }
@@ -250,7 +254,7 @@ _front_cmd_connect(tun_local_chann_t *fc, int addr_type, char *addr, int port) {
    int addr_offset = TUNNEL_CMD_CONST_HEADER_LEN;
    int addr_len = strlen(addr);
 
-   int data_len = addr_offset + 3 + addr_len + 1;
+   u16 data_len = addr_offset + 3 + addr_len + 1;
    
    tunnel_cmd_data_len(data, 1, data_len);
    tunnel_cmd_chann_id(data, 1, fc->chann_id);
@@ -266,15 +270,12 @@ _front_cmd_connect(tun_local_chann_t *fc, int addr_type, char *addr, int port) {
    _front_send_remote_data(data, data_len);
 
    fc->state = LOCAL_CHANN_STATE_WAIT_REMOTE;
-
-   /* _verbose("chann %d:%d send connection request %s, %d\n", */
-   /*          fc->chann_id, fc->magic, addr, port); */
 }
 
 static void
 _front_cmd_close(tun_local_chann_t *c) {
    uint8_t data[32] = {0};
-   int head_len = TUNNEL_CMD_CONST_HEADER_LEN;
+   u16 head_len = TUNNEL_CMD_CONST_HEADER_LEN;
 
    memset(data, 0, sizeof(data));
 
@@ -285,7 +286,7 @@ _front_cmd_close(tun_local_chann_t *c) {
    data[head_len] = 1;
 
    int ret = _front_send_remote_data(data, head_len + 1);
-   _verbose("chann %d:%d send disconnect close:%d\n",
+   _verbose("chann %u:%u send disconnect close:%d\n",
             c->chann_id, c->magic, ret);
 }
 
@@ -314,7 +315,7 @@ _local_chann_tcpin_cb_front(chann_event_t *e) {
       if (fc->state == LOCAL_CHANN_STATE_CONNECTED)
       {
          uint8_t *data = buf_addr(ib,0);
-         int data_len = buf_buffered(ib);
+         u16 data_len = buf_buffered(ib);
 
          tunnel_cmd_data_len(data, 1, data_len);
          tunnel_cmd_chann_id(data, 1, fc->chann_id);
@@ -371,7 +372,7 @@ _local_chann_tcpin_cb_front(chann_event_t *e) {
                   int port = (rd[5+dlen]<<8) | rd[6+dlen];
 
                   char addr[TUNNEL_DNS_DOMAIN_LEN] = {0};
-                  _err("(in) chann %d:%d try connect [%s:%d]\n", fc->chann_id, fc->magic,
+                  _err("(in) chann %u:%u try connect [%s:%d]\n", fc->chann_id, fc->magic,
                        misc_fix_str_1024(domain, dlen), port);
 
                   strncpy(addr, domain, dlen);
@@ -389,7 +390,7 @@ _local_chann_tcpin_cb_front(chann_event_t *e) {
    else if (e->event == MNET_EVENT_DISCONNECT ||
             e->event == MNET_EVENT_ERROR)
    {
-      _verbose("(in) chann %d:%d close, mnet\n", fc->chann_id, fc->magic);
+      _verbose("(in) chann %u:%u close, mnet\n", fc->chann_id, fc->magic);
       _front_cmd_close(fc);
       _local_chann_close(fc);
    }
@@ -480,26 +481,26 @@ _local_tcpout_cb_front(chann_event_t *e) {
                         char addr[TUNNEL_DNS_ADDR_LEN] = {0};
                         sprintf(addr, "%d.%d.%d.%d", d[0], d[1], d[2], d[3]);
                         
-                        _verbose("(out) chann %d:%d connected %s:%d\n",
+                        _verbose("(out) chann %u:%u connected %s:%d\n",
                                  tcmd.chann_id, tcmd.magic, addr, port);
                      }
                      else {
                         _local_cmd_fail_to_connect(fc->tcpin);
-                        _verbose("(out) chann %d:%d fail to connect, state:%d\n",
+                        _verbose("(out) chann %u:%u fail to connect, state:%d\n",
                                  tcmd.chann_id, tcmd.magic, fc->state);
                      }
                   }
                   else {
-                     /* _err("chann %d err state %d\n", tcmd.chann_id, fc->state); */
+                     /* _err("chann %u err state %d\n", tcmd.chann_id, fc->state); */
                   }
                }
                else if (tcmd.cmd == TUNNEL_CMD_CLOSE)
                {
-                  /* _verbose("chann %d close cmd %d\n", tcmd.chann_id, tcmd.payload[0]); */
+                  /* _verbose("chann %u close cmd %d\n", tcmd.chann_id, tcmd.payload[0]); */
                   _local_chann_close(fc);
                }
                else {
-                  /* _err("chann %d err cmd %d\n", tcmd.chann_id, tcmd.cmd); */
+                  /* _err("chann %u err cmd %d\n", tcmd.chann_id, tcmd.cmd); */
                }
             }
          }
@@ -520,7 +521,7 @@ _local_tcpout_cb_front(chann_event_t *e) {
       memset(data, 0, sizeof(data));
 
       int head_len = TUNNEL_CMD_CONST_HEADER_LEN;
-      unsigned short data_len = head_len + 1 + 16 + 16;
+      u16 data_len = head_len + 1 + 16 + 16;
 
       tunnel_cmd_data_len(data, 1, data_len);
       tunnel_cmd_chann_id(data, 1, 0);
@@ -589,6 +590,7 @@ tunnel_local_open(tunnel_local_config_t *conf) {
          assert(tun->bufout && tun->buftmp);
          tun->tcpout = mnet_chann_open(CHANN_TYPE_STREAM);
          mnet_chann_set_cb(tun->tcpout, _local_tcpout_cb_front, tun);
+         mnet_chann_set_bufsize(tun->tcpout, 512 * 1024);
          mnet_chann_connect(tun->tcpout, conf->remote_ipaddr, conf->remote_port);
       }
 
@@ -635,7 +637,7 @@ _local_update_ti() {
 static void
 _local_send_echo(tun_local_t *tun) {
    unsigned char data[32] = {0};
-   int data_len = TUNNEL_CMD_CONST_HEADER_LEN + 1;
+   u16 data_len = TUNNEL_CMD_CONST_HEADER_LEN + 1;
 
    memset(data, 0, sizeof(data));
 

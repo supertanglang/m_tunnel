@@ -10,24 +10,29 @@
 
 #include "m_buf.h"
 
+typedef unsigned char  u8;
+typedef unsigned short u16;
+
 /* [                       HEADER                    ] 
  * TOTAL_DATA_LEN | CHANN_ID |  MAGIC   | TUNNEL_CMD | PAYLOAD
- * 3 bytes        | 4 bytes  |  4 bytes | 1 byte     | n bytes
+ * 2 bytes        | 2 bytes  |  2 bytes | 1 byte     | n bytes
  *
- * support data < 2^24 (16777216, 16M)
+ * support data < 2^16 (65536 , 64k)
  */
 
-#define TUNNEL_CMD_CONST_HEADER_LEN 12
+#define TUNNEL_CMD_CONST_HEADER_LEN 7
 
-#define TUNNEL_CHANN_BUF_SIZE  32768 /* 32k */
-#define TUNNEL_CHANN_MAX_COUNT (1024)
+#define TUNNEL_CMD_CONST_DATA_LEN_OFFSET 2
+
+#define TUNNEL_CHANN_BUF_SIZE  64512  /* 63k */
+#define TUNNEL_CHANN_MAX_COUNT (1024) /* enough for normal web browse */
 
 typedef struct {
-   int data_len;
-   int chann_id;
-   int magic;
-   int cmd;
-   unsigned char *payload;      /* from payload */
+   u16 data_len;                /* data length */
+   u16 chann_id;                /* tcp channel index */
+   u16 magic;                   /* for channel reuse identity */
+   u8  cmd;                     /* cmd */
+   u8  *payload;                /* payload */
 } tunnel_cmd_t;
 
 /* cmd and payload layout */
@@ -87,9 +92,9 @@ enum {
 int tunnel_cmd_check(buf_t *b, tunnel_cmd_t *cmd);
 
 /* data should be buffer header */
-int tunnel_cmd_data_len(unsigned char *data, int set, int data_len);
-int tunnel_cmd_chann_id(unsigned char *data, int set, int chann_id);
-int tunnel_cmd_chann_magic(unsigned char *data, int set, int magic);
-int tunnel_cmd_head_cmd(unsigned char *data, int set, int cmd);
+u16 tunnel_cmd_data_len(u8 *data, int set, u16 data_len);
+u16 tunnel_cmd_chann_id(u8 *data, int set, u16 chann_id);
+u16  tunnel_cmd_chann_magic(u8 *data, int set, u16 magic);
+u8  tunnel_cmd_head_cmd(u8 *data, int set, u8 cmd);
 
 #endif

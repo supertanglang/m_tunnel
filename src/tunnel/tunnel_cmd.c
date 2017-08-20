@@ -19,7 +19,7 @@ tunnel_cmd_check(buf_t *b, tunnel_cmd_t *cmd) {
    if (b && cmd && buf_buffered(b)>=TUNNEL_CMD_CONST_HEADER_LEN) {
       memset(cmd, 0, sizeof(*cmd));
 
-      unsigned char *d = buf_addr(b,buf_ptr(b));
+      u8 *d = buf_addr(b,buf_ptr(b));
       cmd->data_len = tunnel_cmd_data_len(d, 0, 0);
       cmd->chann_id = tunnel_cmd_chann_id(d, 0, 0);
       cmd->magic = tunnel_cmd_chann_magic(d, 0, 0);
@@ -36,65 +36,59 @@ tunnel_cmd_check(buf_t *b, tunnel_cmd_t *cmd) {
    return 0;
 }
 
-int
-tunnel_cmd_data_len(unsigned char *data, int set, int data_len) {
+u16
+tunnel_cmd_data_len(u8 *data, int set, u16 data_len) {
    if (data) {
       if (set) {
-         data[0] = (data_len >> 16 ) & 0xff;
-         data[1] = (data_len >> 8 ) & 0xff;
-         data[2] = data_len & 0xff;
+         data[0] = (data_len >> 8 ) & 0xff;
+         data[1] = data_len & 0xff;
          return data_len;
       }
       else {
-         int len = (data[0] << 16) | (data[1] << 8) | data[2];
-         return len;
+         return (data[0] << 8) | data[1];
       }
    }
    return -1;
 }
 
-int
-tunnel_cmd_chann_id(unsigned char *data, int set, int chann_id) {
+u16
+tunnel_cmd_chann_id(u8 *data, int set, u16 chann_id) {
    if (data) {
-      int base = 3;
+      int base = 2;
       if (set) {
-         data[base+0] = (chann_id >> 24) & 0xff;
-         data[base+1] = (chann_id >> 16) & 0xff;
-         data[base+2] = (chann_id >> 8) & 0xff;
-         data[base+3] = (chann_id & 0xff);
+         data[base+0] = (chann_id >> 8) & 0xff;
+         data[base+1] = (chann_id & 0xff);
          return chann_id;
       }
       else {
-         return (data[base+0]<<24) | (data[base+1]<<16) | (data[base+2]<<8) | data[base+3];
+         return (data[base+0]<<8) | data[base+1];
       }
    }
    return -1;
 }
 
-int
-tunnel_cmd_chann_magic(unsigned char *data, int set, int magic) {
+u16
+tunnel_cmd_chann_magic(u8 *data, int set, u16 magic) {
    if (data) {
-      int base = 3 + 4;
+      int base = 2 + 2;
       if (set) {
-         data[base+0] = (magic >> 24) & 0xff;
-         data[base+1] = (magic >> 16) & 0xff;
-         data[base+2] = (magic >> 8) & 0xff;
-         data[base+3] = (magic & 0xff);
+         data[base+0] = (magic >> 8) & 0xff;
+         data[base+1] = (magic & 0xff);
          return magic;
       }
       else {
-         return (data[base+0]<<24) | (data[base+1]<<16) | (data[base+2]<<8) | data[base+3];
+         return (data[base+0]<<8) | data[base+1];
       }
    }
    return -1;
 }
 
-int
-tunnel_cmd_head_cmd(unsigned char *data, int set, int cmd) {
+u8
+tunnel_cmd_head_cmd(u8 *data, int set, u8 cmd) {
    if (data) {
       int base = TUNNEL_CMD_CONST_HEADER_LEN - 1;
       if (set) {
-         data[base] = (unsigned char)(cmd & 0xff);
+         data[base] = (cmd & 0xff);
          return cmd;
       }
       else {
