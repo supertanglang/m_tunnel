@@ -239,6 +239,7 @@ _remote_chann_close(tun_remote_chann_t *rc, int from_line) {
       rc->node = NULL;
       rc->state = REMOTE_CHANN_STATE_CLOSED;
 
+      mnet_chann_set_cb(c->tcpout, NULL, NULL);
       mnet_chann_close(rc->tcpout);
    }
 }
@@ -386,21 +387,18 @@ _remote_send_echo(tun_remote_client_t *c) {
 
 static void
 _remote_send_close(tun_remote_client_t *c, tun_remote_chann_t *rc, int result) {
-   if (rc->state > REMOTE_CHANN_STATE_DISCONNECT) {
-      unsigned char data[16] = {0};
+   unsigned char data[16] = {0};
 
-      u16 data_len = TUNNEL_CMD_CONST_HEADER_LEN + 1;
+   u16 data_len = TUNNEL_CMD_CONST_HEADER_LEN + 1;
 
-      tunnel_cmd_data_len(data, 1, data_len);
-      tunnel_cmd_chann_id(data, 1, rc->chann_id);
-      tunnel_cmd_chann_magic(data, 1, rc->magic);
-      tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_CLOSE);
+   tunnel_cmd_data_len(data, 1, data_len);
+   tunnel_cmd_chann_id(data, 1, rc->chann_id);
+   tunnel_cmd_chann_magic(data, 1, rc->magic);
+   tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_CLOSE);
 
-      data[data_len - 1] = result; /* omit */
+   data[data_len - 1] = result; /* omit */
 
-      _remote_send_front_data(c, data, data_len);
-      rc->state = REMOTE_CHANN_STATE_DISCONNECT;
-   }
+   _remote_send_front_data(c, data, data_len);
 }
 
 int
@@ -668,18 +666,6 @@ tunnel_remote_open(tunnel_remote_config_t *conf) {
    }
    return 0;
 }
-
-#if 0
-void
-tunnel_remote_close(void) {
-   tun_remote_t *tun = _tun_remote();
-   if (tun->running) {
-      _info("\n");
-      _info("remote close listen, bye !\n");
-      _info("\n");      
-   }
-}
-#endif
 
 static tun_remote_client_t*
 _remote_active_client(tun_remote_client_t *c) {

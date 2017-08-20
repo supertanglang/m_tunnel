@@ -149,8 +149,9 @@ static void
 _local_chann_close(tun_local_chann_t *c, int line) {
    tun_local_t *tun = _tun_local();
    if (c->node) {
-      _verbose("(%d) chann %p %u:%u close, state:%d (a:%d,f:%d)\n", c->tcpin, c->chann_id, c->magic,
-               mnet_chann_state(c->tcpin), lst_count(tun->active_lst), lst_count(tun->free_lst));
+      _verbose("(%d) chann %p %u:%u close, state:%d (a:%d,f:%d)\n", line,
+               c->tcpin, c->chann_id, c->magic, mnet_chann_state(c->tcpin),
+               lst_count(tun->active_lst), lst_count(tun->free_lst));
 
       tun->channs[c->chann_id] = NULL;
       lst_remove(tun->active_lst, c->node);
@@ -159,6 +160,7 @@ _local_chann_close(tun_local_chann_t *c, int line) {
       c->node = NULL;
       c->state = LOCAL_CHANN_STATE_NONE;
 
+      mnet_chann_set_cb(c->tcpin, NULL, NULL);
       mnet_chann_close(c->tcpin);
    }
 }
@@ -280,23 +282,20 @@ _front_cmd_connect(tun_local_chann_t *fc, int addr_type, char *addr, int port) {
 
 static void
 _front_cmd_close(tun_local_chann_t *c) {
-   if (c->state >= LOCAL_CHANN_STATE_WAIT_REMOTE) {
-      uint8_t data[32] = {0};
-      u16 head_len = TUNNEL_CMD_CONST_HEADER_LEN;
+   uint8_t data[32] = {0};
+   u16 head_len = TUNNEL_CMD_CONST_HEADER_LEN;
 
-      memset(data, 0, sizeof(data));
+   memset(data, 0, sizeof(data));
 
-      tunnel_cmd_data_len(data, 1, head_len + 1);
-      tunnel_cmd_chann_id(data, 1, c->chann_id);
-      tunnel_cmd_chann_magic(data, 1, c->magic);
-      tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_CLOSE);
-      data[head_len] = 1;
+   tunnel_cmd_data_len(data, 1, head_len + 1);
+   tunnel_cmd_chann_id(data, 1, c->chann_id);
+   tunnel_cmd_chann_magic(data, 1, c->magic);
+   tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_CLOSE);
+   data[head_len] = 1;
 
-      int ret = _front_send_remote_data(data, head_len + 1);
-      _verbose("chann %u:%u send disconnect close:%d\n",
-               c->chann_id, c->magic, ret);
-      c->state = LOCAL_CHANN_STATE_DISCONNECT;
-   }
+   int ret = _front_send_remote_data(data, head_len + 1);
+   _verbose("chann %u:%u send disconnect close:%d\n",
+            c->chann_id, c->magic, ret);
 }
 
 static inline int
