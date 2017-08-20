@@ -764,6 +764,7 @@ main(int argc, char *argv[]) {
    {
       mnet_allocator(_r_malloc, _r_realloc, _r_free);
 
+      stm_init();
       mnet_init();
       mthrd_init(MTHRD_MODE_POWER_HIGH);
 
