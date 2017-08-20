@@ -239,7 +239,7 @@ _remote_chann_close(tun_remote_chann_t *rc, int from_line) {
       rc->node = NULL;
       rc->state = REMOTE_CHANN_STATE_CLOSED;
 
-      mnet_chann_set_cb(c->tcpout, NULL, NULL);
+      mnet_chann_set_cb(rc->tcpout, NULL, NULL);
       mnet_chann_close(rc->tcpout);
    }
 }
