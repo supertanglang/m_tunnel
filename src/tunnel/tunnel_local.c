@@ -589,7 +589,7 @@ tunnel_local_open(tunnel_local_config_t *conf) {
          assert(tun->bufout && tun->buftmp);
          tun->tcpout = mnet_chann_open(CHANN_TYPE_STREAM);
          mnet_chann_set_cb(tun->tcpout, _local_tcpout_cb_front, tun);
-         mnet_chann_set_bufsize(tun->tcpout, 512 * 1024);
+         mnet_chann_set_bufsize(tun->tcpout, 128 * 1024);
          mnet_chann_connect(tun->tcpout, conf->remote_ipaddr, conf->remote_port);
       }
 

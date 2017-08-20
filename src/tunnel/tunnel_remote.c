@@ -102,7 +102,7 @@ static tun_remote_t _g_remote;
 
 static void _remote_tcpout_cb(chann_event_t *e);
 static void _remote_tcpin_cb(chann_event_t *e);
-static void _remote_chann_close(tun_remote_chann_t*);
+static void _remote_chann_close(tun_remote_chann_t*, int line);
 
 static inline tun_remote_t* _tun_remote(void) {
    return &_g_remote;
@@ -153,7 +153,7 @@ _remote_client_destroy(tun_remote_client_t *c) {
 
       while (lst_count(c->active_lst) > 0) {
          tun_remote_chann_t *rc = lst_first(c->active_lst);
-         _remote_chann_close(rc);
+         _remote_chann_close(rc, __LINE__);
       }
       lst_destroy(c->active_lst);
 
@@ -214,11 +214,12 @@ _remote_chann_open(tun_remote_client_t *c, tunnel_cmd_t *tcmd, char *addr, int p
 }
 
 void
-_remote_chann_close(tun_remote_chann_t *rc) {
+_remote_chann_close(tun_remote_chann_t *rc, int from_line) {
    tun_remote_client_t *c = (tun_remote_client_t*)rc->client;
    if (rc->node) {
-      _verbose("chann %p %u:%u close state:%d (a:%d,f:%d)\n",rc->tcpout, rc->chann_id, rc->magic,
-               mnet_chann_state(rc->tcpout), lst_count(c->active_lst), lst_count(c->free_lst));
+      _verbose("(%d), chann %p %u:%u close state:%d (a:%d,f:%d)\n", from_line,
+               rc->tcpout, rc->chann_id, rc->magic, mnet_chann_state(rc->tcpout),
+               lst_count(c->active_lst), lst_count(c->free_lst));
 
       mnet_chann_set_cb(rc->tcpout, NULL, NULL);
       mnet_chann_close(rc->tcpout);
@@ -504,7 +505,7 @@ _remote_tcpin_cb(chann_event_t *e) {
             else if (tcmd.cmd == TUNNEL_CMD_CLOSE) {
                tun_remote_chann_t *rc = _remote_chann_of_id_magic(c, tcmd.chann_id, tcmd.magic);
                if (rc) {
-                  _remote_chann_close(rc);
+                  _remote_chann_close(rc, __LINE__);
                } else {
                   _remote_chann_in_want_lst(c, &tcmd);
                }
@@ -602,7 +603,7 @@ _remote_tcpout_cb(chann_event_t *e) {
    {
       _verbose("(out) chann %u:%u close, mnet\n", rc->chann_id, rc->magic);
       _remote_send_close(c, rc, 1);
-      _remote_chann_close(rc);
+      _remote_chann_close(rc, __LINE__);
    }
 }
 
@@ -740,6 +741,11 @@ _remote_conf_get_values(tunnel_remote_config_t *conf, char *argv[]) {
    debug_set_level(D_VERBOSE);
 }
 
+static void* _r_malloc(int sz) { return mm_malloc(sz); }
+static void* _r_realloc(void *ptr, int sz) { return mm_realloc(ptr, sz); }
+static void  _r_free(void *ptr) { mm_free(ptr); }
+
+
 int
 main(int argc, char *argv[]) {
    if (argc != 2) {
@@ -756,8 +762,9 @@ main(int argc, char *argv[]) {
    if (conf.mode == TUNNEL_REMOTE_MODE_STANDALONE ||
        conf.mode == TUNNEL_REMOTE_MODE_FORWARD)
    {
+      mnet_allocator(_r_malloc, _r_realloc, _r_free);
+
       mnet_init();
-      stm_init();
       mthrd_init(MTHRD_MODE_POWER_HIGH);
 
       if (tunnel_remote_open(&conf) > 0) {
