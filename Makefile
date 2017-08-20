@@ -1,6 +1,10 @@
 
 CC=gcc
-CFLAGS= -g -Wall -std=c99 -Wdeprecated-declarations
+CFLAGS= -Wall -std=c99 -Wdeprecated-declarations
+
+DEBUG= -g
+RELEASE= -O2
+
 LIBS= -lpthread -lc
 
 SRCS := $(shell find src -name "*.c")
@@ -13,13 +17,15 @@ DIRS += $(shell find vendor/m_foundation -type d)
 
 INCS := $(foreach n, $(DIRS), -I$(n))
 
-all: tun_local.out tun_remote.out
+all: debug
 
-tun_local.out: $(SRCS)
-	$(CC) $(CFLAGS) $(INCS) -o $@ $^ $(LIBS) -DTEST_TUNNEL_LOCAL
+debug: $(SRCS)
+	$(CC) $(DEBUG) $(CFLAGS) $(INCS) -o tun_local.out $^ $(LIBS) -DTEST_TUNNEL_LOCAL
+	$(CC) $(DEBUG) $(CFLAGS) $(INCS) -o tun_remote.out $^ $(LIBS) -DTEST_TUNNEL_REMOTE
 
-tun_remote.out: $(SRCS)
-	$(CC) $(CFLAGS) $(INCS) -o $@ $^ $(LIBS) -DTEST_TUNNEL_REMOTE
+release: $(SRCS)
+	$(CC) $(RELEASE) $(CFLAGS) $(INCS) -o tun_local.out $^ $(LIBS) -DTEST_TUNNEL_LOCAL
+	$(CC) $(RELEASE) $(CFLAGS) $(INCS) -o tun_remote.out $^ $(LIBS) -DTEST_TUNNEL_REMOTE
 
 clean:
 	rm -rf *.out *.dSYM
