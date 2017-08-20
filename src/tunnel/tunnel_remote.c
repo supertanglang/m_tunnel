@@ -598,8 +598,7 @@ _remote_tcpout_cb(chann_event_t *e) {
          _remote_send_connect_result(c, rc->chann_id, rc->magic, 1);
       }
    }
-   else if (e->event == MNET_EVENT_DISCONNECT ||
-            e->event == MNET_EVENT_ERROR)
+   else if (e->event == MNET_EVENT_DISCONNECT)
    {
       _verbose("(out) chann %u:%u close, mnet\n", rc->chann_id, rc->magic);
       _remote_send_close(c, rc, 1);

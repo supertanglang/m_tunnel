@@ -387,8 +387,7 @@ _local_chann_tcpin_cb_front(chann_event_t *e) {
 
       buf_reset(ib);
    }
-   else if (e->event == MNET_EVENT_DISCONNECT ||
-            e->event == MNET_EVENT_ERROR)
+   else if (e->event == MNET_EVENT_DISCONNECT)
    {
       _verbose("(in) chann %u:%u close, mnet\n", fc->chann_id, fc->magic);
       _front_cmd_close(fc);
