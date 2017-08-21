@@ -24,7 +24,7 @@ typedef unsigned short u16;
 
 #define TUNNEL_CMD_CONST_DATA_LEN_OFFSET 2
 
-#define TUNNEL_CHANN_BUF_SIZE  64512  /* 63k */
+#define TUNNEL_CHANN_BUF_SIZE  32768  /* 32k */
 #define TUNNEL_CHANN_MAX_COUNT (1024) /* enough for normal web browse */
 
 typedef struct {

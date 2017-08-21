@@ -91,7 +91,6 @@ typedef struct {
    tunnel_remote_mode_t mode;
    tunnel_remote_config_t conf;
    chann_t *tcpin;
-   chann_t *tcpout;             /* for mode forward */
    buf_t *buftmp;               /* buf for crypto */
    lst_t *clients_lst;          /* acitve cilent */
    lst_t *leave_lst;            /* client to leave */
@@ -102,7 +101,6 @@ static tun_remote_t _g_remote;
 
 static void _remote_tcpout_cb(chann_event_t *e);
 static void _remote_tcpin_cb(chann_event_t *e);
-static void _remote_chann_disconnect(tun_remote_chann_t *rc);
 static void _remote_chann_close(tun_remote_chann_t*, int line);
 
 static inline tun_remote_t* _tun_remote(void) {
@@ -135,7 +133,6 @@ _remote_client_create(chann_t *n) {
    c->free_lst = lst_create();
    c->want_lst = lst_create();
    c->node = lst_pushl(tun->clients_lst, c);
-   mnet_chann_set_bufsize(n, 256 * 1024);
    mnet_chann_set_cb(n, _remote_tcpin_cb, c);
    return c;
 }
@@ -154,7 +151,6 @@ _remote_client_destroy(tun_remote_client_t *c) {
 
       while (lst_count(c->active_lst) > 0) {
          tun_remote_chann_t *rc = lst_first(c->active_lst);
-         _remote_chann_disconnect(rc);
          _remote_chann_close(rc, __LINE__);
       }
       lst_destroy(c->active_lst);
@@ -216,13 +212,6 @@ _remote_chann_open(tun_remote_client_t *c, tunnel_cmd_t *tcmd, char *addr, int p
 }
 
 void
-_remote_chann_disconnect(tun_remote_chann_t *rc) {
-   if (rc->state > REMOTE_CHANN_STATE_DISCONNECT) {
-      rc->state = REMOTE_CHANN_STATE_DISCONNECT;
-   }
-}
-
-void
 _remote_chann_close(tun_remote_chann_t *rc, int from_line) {
    tun_remote_client_t *c = (tun_remote_client_t*)rc->client;
    if (rc->node) {
@@ -239,7 +228,7 @@ _remote_chann_close(tun_remote_chann_t *rc, int from_line) {
       rc->node = NULL;
       rc->state = REMOTE_CHANN_STATE_CLOSED;
 
-      mnet_chann_set_cb(rc->tcpout, NULL, NULL);
+      mnet_chann_disconnect(rc->tcpout);
       mnet_chann_close(rc->tcpout);
    }
 }
@@ -249,7 +238,7 @@ _remote_chann_of_id_magic(tun_remote_client_t *c, u16 chann_id, u16 magic) {
    if (c) {
       if (chann_id>=0 && chann_id<TUNNEL_CHANN_MAX_COUNT) {
          tun_remote_chann_t *rc = c->channs[chann_id];
-         if (rc && (rc->magic==magic)) {
+         if (rc && (rc->chann_id==chann_id && rc->magic==magic)) {
             return rc;
          }
       }
@@ -514,7 +503,6 @@ _remote_tcpin_cb(chann_event_t *e) {
             else if (tcmd.cmd == TUNNEL_CMD_CLOSE) {
                tun_remote_chann_t *rc = _remote_chann_of_id_magic(c, tcmd.chann_id, tcmd.magic);
                if (rc) {
-                  _remote_chann_disconnect(rc);
                   _remote_chann_close(rc, __LINE__);
                } else {
                   _remote_chann_in_want_lst(c, &tcmd);
@@ -561,7 +549,9 @@ _remote_tcpin_cb(chann_event_t *e) {
          buf_reset(ib);
       }
    }
-   else if (e->event == MNET_EVENT_DISCONNECT) {
+   else if (e->event == MNET_EVENT_DISCONNECT ||
+            e->event == MNET_EVENT_ERROR)
+   {
       _verbose("client %p close event !\n", c);
       lst_pushl(_tun_remote()->leave_lst, c);
    }
@@ -609,7 +599,8 @@ _remote_tcpout_cb(chann_event_t *e) {
          _remote_send_connect_result(c, rc->chann_id, rc->magic, 1);
       }
    }
-   else if (e->event == MNET_EVENT_DISCONNECT)
+   else if (e->event == MNET_EVENT_DISCONNECT ||
+            e->event == MNET_EVENT_ERROR)
    {
       _verbose("(out) chann %u:%u close, mnet\n", rc->chann_id, rc->magic);
       _remote_send_close(c, rc, 1);
@@ -652,7 +643,7 @@ tunnel_remote_open(tunnel_remote_config_t *conf) {
          exit(1);
       }
 
-      tun->buftmp = buf_create(TUNNEL_CHANN_BUF_SIZE);
+      tun->buftmp = buf_create(TUNNEL_CHANN_BUF_SIZE + 32);
       assert(tun->buftmp);
 
       tun->mode = conf->mode;
