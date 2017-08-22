@@ -559,8 +559,7 @@ _remote_tcpin_cb(chann_event_t *e) {
 
 static inline int
 _remote_buf_available(buf_t *b) {
-   /* for crypto, keep least 8 bytes */
-   return (buf_available(b) - TUNNEL_CMD_CONST_HEADER_LEN);
+   return (buf_available(b) - RC4_CRYPTO_OCCUPY); /* keep space for RC4 crypto */
 }
 
 void
@@ -752,6 +751,7 @@ main(int argc, char *argv[]) {
        conf.mode == TUNNEL_REMOTE_MODE_FORWARD)
    {
       mnet_allocator(_r_malloc, _r_realloc, _r_free);
+      //mnet_setlog(3, NULL);
 
       stm_init();
       mnet_init();

@@ -292,8 +292,7 @@ _front_cmd_close(tun_local_chann_t *c) {
 
 static inline int
 _local_buf_available(buf_t *b) {
-   /* for crypto, keep least 8 bytes */
-   return (buf_available(b) - TUNNEL_CMD_CONST_HEADER_LEN);
+   return (buf_available(b) - RC4_CRYPTO_OCCUPY); /* keep space for RC4 crypto */
 }
 
 
@@ -424,24 +423,32 @@ _local_tcpout_cb_front(chann_event_t *e) {
             ret = mnet_chann_recv(e->n, buf_addr(ob,buf_ptw(ob)), TUNNEL_CMD_CONST_HEADER_LEN - buf_buffered(ob));
          } else {
             tunnel_cmd_check(ob, &tcmd);
+            if (tcmd.data_len > TUNNEL_CHANN_BUF_SIZE + 8) {
+               _err("(out) invalid data size %d!\n", tcmd.data_len);
+               assert(0);
+            }
             ret = mnet_chann_recv(e->n, buf_addr(ob,buf_ptw(ob)), tcmd.data_len - buf_buffered(ob));
          }
 
          if (ret <= 0) {
+            _verbose("(out) fail to recv %d!\n", ret);
             return;
          }
          buf_forward_ptw(ob, ret);
 
          if (buf_buffered(ob) <= TUNNEL_CMD_CONST_HEADER_LEN) {
+            _verbose("(out) insufficent data !\n");
             return;
          }
 
          if (tcmd.data_len != buf_buffered(ob)) {
+            _verbose("(out) in valid data len !\n");
             return;
          }
 
          /* decode data */
          if (_front_recv_remote_data(ob) <= 0) {
+            _verbose("(out) fail to decode !\n");
             goto reset_buffer;
          }
 
@@ -511,6 +518,9 @@ _local_tcpout_cb_front(chann_event_t *e) {
                   _verbose("(out) got authority value %d\n", tcmd.payload[0]);
                }
             }
+         }
+         else {
+            _err("invalid tun state !\n");
          }
         reset_buffer:
          buf_reset(ob);
