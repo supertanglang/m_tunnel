@@ -185,9 +185,10 @@ _remote_chann_open(tun_remote_client_t *c, tunnel_cmd_t *tcmd, char *addr, int p
       rc = lst_popf(c->free_lst);
    } else {
       rc = (tun_remote_chann_t*)mm_malloc(sizeof(*rc));
-      rc->bufout = buf_create(TUNNEL_CHANN_BUF_SIZE);
-      assert(rc->bufout);
    }
+   rc->bufout = buf_create(TUNNEL_CHANN_BUF_SIZE);
+   assert(rc->bufout);
+
    rc->chann_id = tcmd->chann_id;
    rc->magic = tcmd->magic;
    rc->client = (void*)c;
@@ -219,6 +220,9 @@ _remote_chann_close(tun_remote_chann_t *rc, int from_line) {
                rc->tcpout, rc->chann_id, rc->magic, mnet_chann_state(rc->tcpout),
                lst_count(c->active_lst), lst_count(c->free_lst));
 
+      buf_destroy(rc->bufout);
+
+      rc->bufout = NULL;
       c->channs[rc->chann_id] = NULL;
       rc->chann_id = 0;
 

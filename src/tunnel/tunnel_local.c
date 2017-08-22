@@ -118,11 +118,12 @@ _local_chann_open(chann_t *r) {
    }
    else {
       c = (tun_local_chann_t*)mm_malloc(sizeof(*c));
-      c->bufin = buf_create(TUNNEL_CHANN_BUF_SIZE);
-      assert(c->bufin);
       c->chann_id = tun->chann_idx;
       tun->chann_idx += 1;
    }
+   c->bufin = buf_create(TUNNEL_CHANN_BUF_SIZE);
+   assert(c->bufin);
+
    tun->channs[c->chann_id] = c;
    c->magic = (++tun->magic_code);
    c->tcpin = r;
@@ -146,9 +147,12 @@ _local_chann_close(tun_local_chann_t *c, int line) {
                lst_count(tun->active_lst), lst_count(tun->free_lst));
 
       tun->channs[c->chann_id] = NULL;
+      buf_destroy(c->bufin);
+
       lst_remove(tun->active_lst, c->node);
       lst_pushl(tun->free_lst, c);
 
+      c->bufin = NULL;
       c->node = NULL;
       c->state = LOCAL_CHANN_STATE_NONE;
 
@@ -431,24 +435,21 @@ _local_tcpout_cb_front(chann_event_t *e) {
          }
 
          if (ret <= 0) {
-            _verbose("(out) fail to recv %d!\n", ret);
             return;
          }
          buf_forward_ptw(ob, ret);
 
          if (buf_buffered(ob) <= TUNNEL_CMD_CONST_HEADER_LEN) {
-            _verbose("(out) insufficent data !\n");
             return;
          }
 
          if (tcmd.data_len != buf_buffered(ob)) {
-            _verbose("(out) in valid data len !\n");
             return;
          }
 
          /* decode data */
          if (_front_recv_remote_data(ob) <= 0) {
-            _verbose("(out) fail to decode !\n");
+            _err("(out) fail to decode !\n");
             goto reset_buffer;
          }
 
@@ -743,7 +744,6 @@ main(int argc, char *argv[]) {
 
                   if (tun->data_mark <= 0) {
                      _local_send_echo(tun);
-                     
                   }
                   tun->data_mark = 0;
 
