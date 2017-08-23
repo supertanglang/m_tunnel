@@ -133,6 +133,7 @@ _remote_client_create(chann_t *n) {
    c->free_lst = lst_create();
    c->want_lst = lst_create();
    c->node = lst_pushl(tun->clients_lst, c);
+   mnet_chann_set_bufsize(n, 262144);
    mnet_chann_set_cb(n, _remote_tcpin_cb, c);
    return c;
 }
