@@ -22,74 +22,62 @@
     <ClCompile Include="..\src\tunnel\tunnel_cmd.c">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\tunnel\tunnel_crypto.c">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\tunnel\tunnel_dns.c">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\tunnel\tunnel_local.c">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\model\m_buf.c">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\model\m_debug.c">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\model\m_dict.c">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\model\m_list.c">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\model\m_mem.c">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\model\m_stm.c">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\plat\plat_net.c">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\plat\plat_thread.c">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\plat\plat_time.c">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\plat\plat_type.c">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\utils\utils_conf.c">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="..\src\utils\utils_misc.c">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\utils\utils_str.c">
+    <ClCompile Include="..\vendor\m_foundation\src\crypto\m_rc4.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="..\vendor\m_foundation\src\model\m_buf.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="..\vendor\m_foundation\src\model\m_debug.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="..\vendor\m_foundation\src\model\m_list.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="..\vendor\m_foundation\src\model\m_mem.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="..\vendor\m_foundation\src\plat\plat_time.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="..\vendor\m_foundation\src\utils\utils_conf.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="..\vendor\m_foundation\src\utils\utils_str.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="..\vendor\m_foundation\src\utils\utils_url.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="..\vendor\m_net\src\plat_net.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="..\vendor\m_foundation\src\plat\plat_type.c">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\tunnel\tunnel_cmd.h" />
-    <ClInclude Include="..\src\tunnel\tunnel_crypto.h" />
-    <ClInclude Include="..\src\tunnel\tunnel_dns.h" />
     <ClInclude Include="..\src\tunnel\tunnel_local.h" />
-    <ClInclude Include="..\src\model\m_buf.h" />
-    <ClInclude Include="..\src\model\m_debug.h" />
-    <ClInclude Include="..\src\model\m_dict.h" />
-    <ClInclude Include="..\src\model\m_list.h" />
-    <ClInclude Include="..\src\model\m_mem.h" />
-    <ClInclude Include="..\src\model\m_stm.h" />
-    <ClInclude Include="..\src\plat\plat_lock.h" />
-    <ClInclude Include="..\src\plat\plat_net.h" />
-    <ClInclude Include="..\src\plat\plat_os.h" />
-    <ClInclude Include="..\src\plat\plat_thread.h" />
-    <ClInclude Include="..\src\plat\plat_time.h" />
-    <ClInclude Include="..\src\plat\plat_type.h" />
-    <ClInclude Include="..\src\utils\utils_conf.h" />
     <ClInclude Include="..\src\utils\utils_misc.h" />
-    <ClInclude Include="..\src\utils\utils_str.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\crypto\m_rc4.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\model\m_buf.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\model\m_debug.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\model\m_list.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\model\m_mem.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\plat\plat_lock.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\plat\plat_os.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\plat\plat_time.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\plat\plat_type.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\utils\utils_conf.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\utils\utils_str.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\utils\utils_url.h" />
+    <ClInclude Include="..\vendor\m_net\src\plat_net.h" />
   </ItemGroup>
 </Project>

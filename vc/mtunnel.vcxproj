@@ -19,44 +19,38 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\src\model\m_buf.c" />
-    <ClCompile Include="..\src\model\m_debug.c" />
-    <ClCompile Include="..\src\model\m_dict.c" />
-    <ClCompile Include="..\src\model\m_list.c" />
-    <ClCompile Include="..\src\model\m_mem.c" />
-    <ClCompile Include="..\src\model\m_stm.c" />
-    <ClCompile Include="..\src\plat\plat_net.c" />
-    <ClCompile Include="..\src\plat\plat_thread.c" />
-    <ClCompile Include="..\src\plat\plat_time.c" />
-    <ClCompile Include="..\src\plat\plat_type.c" />
     <ClCompile Include="..\src\tunnel\tunnel_cmd.c" />
-    <ClCompile Include="..\src\tunnel\tunnel_crypto.c" />
-    <ClCompile Include="..\src\tunnel\tunnel_dns.c" />
     <ClCompile Include="..\src\tunnel\tunnel_local.c" />
-    <ClCompile Include="..\src\utils\utils_conf.c" />
     <ClCompile Include="..\src\utils\utils_misc.c" />
-    <ClCompile Include="..\src\utils\utils_str.c" />
+    <ClCompile Include="..\vendor\m_foundation\src\crypto\m_rc4.c" />
+    <ClCompile Include="..\vendor\m_foundation\src\model\m_buf.c" />
+    <ClCompile Include="..\vendor\m_foundation\src\model\m_debug.c" />
+    <ClCompile Include="..\vendor\m_foundation\src\model\m_list.c" />
+    <ClCompile Include="..\vendor\m_foundation\src\model\m_mem.c" />
+    <ClCompile Include="..\vendor\m_foundation\src\plat\plat_time.c" />
+    <ClCompile Include="..\vendor\m_foundation\src\plat\plat_type.c" />
+    <ClCompile Include="..\vendor\m_foundation\src\utils\utils_conf.c" />
+    <ClCompile Include="..\vendor\m_foundation\src\utils\utils_str.c" />
+    <ClCompile Include="..\vendor\m_foundation\src\utils\utils_url.c" />
+    <ClCompile Include="..\vendor\m_net\src\plat_net.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\src\model\m_buf.h" />
-    <ClInclude Include="..\src\model\m_debug.h" />
-    <ClInclude Include="..\src\model\m_dict.h" />
-    <ClInclude Include="..\src\model\m_list.h" />
-    <ClInclude Include="..\src\model\m_mem.h" />
-    <ClInclude Include="..\src\model\m_stm.h" />
-    <ClInclude Include="..\src\plat\plat_lock.h" />
-    <ClInclude Include="..\src\plat\plat_net.h" />
-    <ClInclude Include="..\src\plat\plat_os.h" />
-    <ClInclude Include="..\src\plat\plat_thread.h" />
-    <ClInclude Include="..\src\plat\plat_time.h" />
-    <ClInclude Include="..\src\plat\plat_type.h" />
     <ClInclude Include="..\src\tunnel\tunnel_cmd.h" />
-    <ClInclude Include="..\src\tunnel\tunnel_crypto.h" />
-    <ClInclude Include="..\src\tunnel\tunnel_dns.h" />
     <ClInclude Include="..\src\tunnel\tunnel_local.h" />
-    <ClInclude Include="..\src\utils\utils_conf.h" />
     <ClInclude Include="..\src\utils\utils_misc.h" />
-    <ClInclude Include="..\src\utils\utils_str.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\crypto\m_rc4.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\model\m_buf.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\model\m_debug.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\model\m_list.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\model\m_mem.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\plat\plat_lock.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\plat\plat_os.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\plat\plat_time.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\plat\plat_type.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\utils\utils_conf.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\utils\utils_str.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\utils\utils_url.h" />
+    <ClInclude Include="..\vendor\m_net\src\plat_net.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
@@ -123,7 +117,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>$(ProjectDir)\..\src\model;$(ProjectDir)\..\src\plat;$(ProjectDir)\..\src\tunnel;$(ProjectDir)\..\src\utils;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)\..\src\tunnel;$(ProjectDir)\..\src\utils;$(ProjectDir)\..\vendor\m_net\src;$(ProjectDir)\..\vendor\m_foundation\src\model;$(ProjectDir)\..\vendor\m_foundation\src\plat;$(ProjectDir)\..\vendor\m_foundation\src\crypto;$(ProjectDir)\..\vendor\m_foundation\src\utils;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
@@ -131,7 +125,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>$(ProjectDir)\..\src\utils;$(ProjectDir)\..\src\tunnel;$(ProjectDir)\..\src\plat;$(ProjectDir)\..\src\model;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)\..\src\tunnel;$(ProjectDir)\..\src\utils;$(ProjectDir)\..\vendor\m_net\src;$(ProjectDir)\..\vendor\m_foundation\src\model;$(ProjectDir)\..\vendor\m_foundation\src\plat;$(ProjectDir)\..\vendor\m_foundation\src\crypto;$(ProjectDir)\..\vendor\m_foundation\src\utils;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
