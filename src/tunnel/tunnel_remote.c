@@ -637,7 +637,7 @@ tunnel_remote_open(tunnel_config_t *conf) {
 
       tun->tcpin = mnet_chann_open(CHANN_TYPE_STREAM);
       mnet_chann_set_cb(tun->tcpin, _remote_listen_cb, tun);
-      if (mnet_chann_listen_ex(tun->tcpin, conf->local_ipaddr, conf->local_port, 2) <= 0) {
+      if (mnet_chann_listen_ex(tun->tcpin, conf->remote_ipaddr, conf->remote_port, 2) <= 0) {
          exit(1);
       }
 
