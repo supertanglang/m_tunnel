@@ -50,20 +50,22 @@ in Windows, using VS2017 under vc dir.
 Under config dir, something like:
 
 ```
-# 
+# file name for output
 DEBUG_FILE=stdout
 
-# as sock5 front
-LOCAL_MODE=FRONT
+# local addr
+LOCAL_ADDR=127.0.0.1:1080
 
-# local ip address
-LOCAL_IP=127.0.0.1
-LOCAL_PORT=1080
+# remote addr
+REMOTE_ADDR=192.168.2.101:9871
 
-# remote ip address
-REMOTE_IP=192.168.2.101
-REMOTE_PORT=9871
+# login info
+USER_NAME=112233
+PASS_WORD=123456
 
-REMOTE_USERNAME=112233
-REMOTE_PASSWORD=123456
+# 'NO' to disable RC4 crypto
+#CRYPTO_RC4=NO
+
+# 0 ~ 10, 0 to disable power save
+POWER_SAVE=2
 ```
