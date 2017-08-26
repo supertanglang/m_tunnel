@@ -599,7 +599,6 @@ tunnel_local_open(tunnel_config_t *conf) {
 
       _info("local listen on %s:%d\n", conf->local_ipaddr, conf->local_port);
       _info("\n");
-
       return 1;
    }
    return 0;
