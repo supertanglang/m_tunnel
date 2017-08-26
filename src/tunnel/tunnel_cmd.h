@@ -42,14 +42,12 @@ enum {
    TUNNEL_CMD_ECHO,
    /* REQUEST : ECHO_VAL
                 1 byte
-
       RESPONSE: 1
     */
 
    TUNNEL_CMD_AUTH,
    /* REQUEST : AUTH_TYPE | USER_NAME | PASSWORD_PAYLOAD
                 1 byte    | 16 byte   | 16 bytes
-
 
       RESPONSE: 1/0 (SUCCESS/FAIL)
                 1 byte
@@ -94,7 +92,7 @@ int tunnel_cmd_check(buf_t *b, tunnel_cmd_t *cmd);
 /* data should be buffer header */
 u16 tunnel_cmd_data_len(u8 *data, int set, u16 data_len);
 u16 tunnel_cmd_chann_id(u8 *data, int set, u16 chann_id);
-u16  tunnel_cmd_chann_magic(u8 *data, int set, u16 magic);
+u16 tunnel_cmd_chann_magic(u8 *data, int set, u16 magic);
 u8  tunnel_cmd_head_cmd(u8 *data, int set, u8 cmd);
 
 #endif

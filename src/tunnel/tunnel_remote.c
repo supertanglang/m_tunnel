@@ -29,7 +29,7 @@
 
 #include "tunnel_cmd.h"
 #include "tunnel_dns.h"
-#include "tunnel_remote.h"
+#include "tunnel_conf.h"
 
 #include <assert.h>
 
@@ -88,8 +88,7 @@ typedef struct {
    time_t ti;
    time_t last_ti;
    uint64_t key;
-   tunnel_remote_mode_t mode;
-   tunnel_remote_config_t conf;
+   tunnel_config_t conf;
    chann_t *tcpin;
    buf_t *buftmp;               /* buf for crypto */
    lst_t *clients_lst;          /* acitve cilent */
@@ -625,11 +624,8 @@ _remote_stm_finalizer(void *ptr, void *ud) {
    mm_free(ptr);
 }
 
-/*
- */
-
 int
-tunnel_remote_open(tunnel_remote_config_t *conf) {
+tunnel_remote_open(tunnel_config_t *conf) {
    tun_remote_t *tun = _tun_remote();
    if (conf && !tun->running) {
       memset(tun, 0, sizeof(*tun));
@@ -648,10 +644,8 @@ tunnel_remote_open(tunnel_remote_config_t *conf) {
       tun->buftmp = buf_create(TUNNEL_CHANN_BUF_SIZE + 32);
       assert(tun->buftmp);
 
-      tun->mode = conf->mode;
       tun->running = 1;
 
-      _info("remote open mode %d\n", tun->mode);
       _info("remote listen on %s:%d\n", conf->local_ipaddr, conf->local_port);
       _info("\n");
 
@@ -672,71 +666,6 @@ _remote_active_client(tun_remote_client_t *c) {
    return NULL;
 }
 
-static void
-_remote_conf_get_values(tunnel_remote_config_t *conf, char *argv[]) {
-
-   conf_t *cf = utils_conf_open(argv[1]);
-   if (cf == NULL) {
-      _err("fail to get conf from [%s]\n", argv[1]);
-      goto fail;
-   }
-
-   str_t *value = NULL;
-
-   char dbg_fname[32] = {0};
-
-   value = utils_conf_value(cf, "DEBUG_FILE");
-   strncpy(dbg_fname, str_cstr(value), str_len(value));
-
-   value = utils_conf_value(cf, "REMOTE_MODE");
-   if (str_cmp(value, "STANDALONE", 0) == 0) {
-      conf->mode = TUNNEL_REMOTE_MODE_STANDALONE;
-   } else if (str_cmp(value, "FORWARD", 0) == 0) {
-      conf->mode = TUNNEL_REMOTE_MODE_FORWARD;
-   } else {
-      goto fail;
-   }
-
-   value = utils_conf_value(cf, "REMOTE_IP");
-   strncpy(conf->local_ipaddr, str_cstr(value), str_len(value));
-   conf->local_port = atoi(str_cstr(utils_conf_value(cf, "REMOTE_PORT")));
-
-   if (conf->mode == TUNNEL_REMOTE_MODE_FORWARD) {
-      value = utils_conf_value(cf, "FORWARD_IP");
-      strncpy(conf->forward_ipaddr, str_cstr(value), str_len(value));
-      conf->forward_port = atoi(str_cstr(utils_conf_value(cf, "FORWARD_PORT")));
-   }
-
-   value = utils_conf_value(cf, "REMOTE_USERNAME");
-   if (value) {
-      strncpy(conf->username, str_cstr(value), _MIN_OF(str_len(value), 32));
-   }
-
-   value = utils_conf_value(cf, "REMOTE_PASSWORD");
-   if (value) {
-      strncpy(conf->password, str_cstr(value), _MIN_OF(str_len(value), 32));
-   }
-
-   value = utils_conf_value(cf, "CRYPTO_RC4");
-   if (value && str_cmp(value, "YES", 0)==0) {
-      conf->crypto_rc4 = 0;
-   } else {
-      conf->crypto_rc4 = 1;
-   }
-
-  fail:
-   utils_conf_close(cf);
-
-   debug_open(dbg_fname);
-   debug_set_option(D_OPT_FILE);
-   debug_set_level(D_VERBOSE);
-}
-
-static void* _r_malloc(int sz) { return mm_malloc(sz); }
-static void* _r_realloc(void *ptr, int sz) { return mm_realloc(ptr, sz); }
-static void  _r_free(void *ptr) { mm_free(ptr); }
-
-
 int
 main(int argc, char *argv[]) {
    if (argc != 2) {
@@ -746,95 +675,82 @@ main(int argc, char *argv[]) {
 
    signal(SIGPIPE, SIG_IGN);
 
-   tunnel_remote_config_t conf = {TUNNEL_REMOTE_MODE_INVALID, 0, 0, "", ""};
+   tunnel_config_t conf;
 
-   _remote_conf_get_values(&conf, argv);
+   if ( !tunnel_conf_get_values(&conf, argv) ) {
+      return 0;
+   }
 
-   if (conf.mode == TUNNEL_REMOTE_MODE_STANDALONE ||
-       conf.mode == TUNNEL_REMOTE_MODE_FORWARD)
-   {
-      mnet_allocator(_r_malloc, _r_realloc, _r_free);
-      //mnet_setlog(3, NULL);
+   debug_open(conf.dbg_fname);
+   debug_set_option(D_OPT_FILE);
+   debug_set_level(D_VERBOSE);
 
-      stm_init();
-      mnet_init();
-      mthrd_init(MTHRD_MODE_POWER_HIGH);
+   stm_init();
+   mnet_init();
+   mthrd_init(MTHRD_MODE_POWER_HIGH);
 
-      if (tunnel_remote_open(&conf) > 0) {
-         tun_remote_t *tun = _tun_remote();
+   if (tunnel_remote_open(&conf) > 0) {
+      tun_remote_t *tun = _tun_remote();
 
-         tun->last_ti = _remote_update_ti();
-         tun->key = rc4_hash_key(conf.password, strlen(conf.password));
+      tun->last_ti = _remote_update_ti();
+      tun->key = rc4_hash_key(conf.password, strlen(conf.password));
 
-         for (int i=0;;i++) {
+      for (int i=0;;i++) {
+         
+         _remote_update_ti();
+         mnet_poll( (1<<21) );
 
-            _remote_update_ti();
-            mnet_poll( (1<<21) );
-
-
-            /* close inactive client */
-            while (lst_count(tun->leave_lst) > 0) {
-               _remote_client_destroy(lst_popf(tun->leave_lst));
-            }
-
-
-            /* check dns ip_stm, and create chann_id/magic paired socket */
-            while (stm_count(tun->ip_stm) > 0) {
-               dns_query_t *q = stm_popf(tun->ip_stm);
-               tun_remote_client_t *c = q->opaque;
-
-               if ( _remote_active_client(c) ) {
-                  tunnel_cmd_t tcmd;
-                  int is_connect = 1;
-
-                  tcmd.chann_id = q->chann_id;
-                  tcmd.magic = q->magic;
-
-                  /* check dns query chann_id/magic not in close_lst */
-                  if ( _remote_chann_in_want_lst(c, &tcmd) ) {
-                     if (q->port <= 0) {
-                        is_connect = 0;
-                     } else {
-                        tun_remote_chann_t *rc = _remote_chann_open(c, &tcmd, q->addr, q->port);
-                        if (rc == NULL) {
-                           is_connect = 0;
-                        }
-                     }
-                  }
-
-                  if ( !is_connect ) {
-                     _remote_send_connect_result(c, tcmd.chann_id, tcmd.magic, 0);
-                  }
-               }
-               
-               _dns_query_destroy(q);
-            }
-
-
-            /* mem report */
-            if (tun->ti - tun->last_ti > 60) {
-               tun->last_ti = tun->ti;
-               mm_report(1);
-               _verbose("channs count:%d\n", mnet_report(0));
-            }
+         /* close inactive client */
+         while (lst_count(tun->leave_lst) > 0) {
+            _remote_client_destroy(lst_popf(tun->leave_lst));
          }
 
-         //tunnel_remote_close();
-      }
-      else {
-         _err("invalid tunnel mode %d !\n", conf.mode);
-      }
+         /* check dns ip_stm, and create chann_id/magic paired socket */
+         while (stm_count(tun->ip_stm) > 0) {
+            dns_query_t *q = stm_popf(tun->ip_stm);
+            tun_remote_client_t *c = q->opaque;
 
-      mthrd_fini();
-      stm_fini();
-      mnet_fini();
-   }
-   else {
-      _err("invalide remote mode %d !\n", conf.mode);
+            if ( _remote_active_client(c) ) {
+               tunnel_cmd_t tcmd;
+               int is_connect = 1;
+
+               tcmd.chann_id = q->chann_id;
+               tcmd.magic = q->magic;
+
+               /* check dns query chann_id/magic not in close_lst */
+               if ( _remote_chann_in_want_lst(c, &tcmd) ) {
+                  if (q->port <= 0) {
+                     is_connect = 0;
+                  } else {
+                     tun_remote_chann_t *rc = _remote_chann_open(c, &tcmd, q->addr, q->port);
+                     if (rc == NULL) {
+                        is_connect = 0;
+                     }
+                  }
+               }
+
+               if ( !is_connect ) {
+                  _remote_send_connect_result(c, tcmd.chann_id, tcmd.magic, 0);
+               }
+            }
+               
+            _dns_query_destroy(q);
+         }
+
+         /* mem report */
+         if (tun->ti - tun->last_ti > 60) {
+            tun->last_ti = tun->ti;
+            mm_report(1);
+            _verbose("channs count:%d\n", mnet_report(0));
+         }
+      }
    }
 
+   mthrd_fini();
+   stm_fini();
+   mnet_fini();
    debug_close();
    return 0;
 }
 
-#endif
+#endif  /* TEST_TUNNEL_REMOTE */

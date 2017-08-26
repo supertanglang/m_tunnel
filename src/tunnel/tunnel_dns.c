@@ -26,20 +26,15 @@
 
 #include "m_mem.h"
 #include "m_dict.h"
-#include "m_list.h"
 #include "m_stm.h"
 #include "m_debug.h"
 
 #include "plat_time.h"
-#include "plat_thread.h"
-
-//#include "utils_str.h"
-#include "utils_misc.h"
-
-#include "tunnel_dns.h"
-
 #include "plat_lock.h"
 #include "plat_thread.h"
+
+#include "utils_misc.h"
+#include "tunnel_dns.h"
 
 #include <assert.h>
 

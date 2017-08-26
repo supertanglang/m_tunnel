@@ -33,13 +33,11 @@
 #include "plat_net.h"
 #include "plat_time.h"
 
-#include "utils_str.h"
-#include "utils_conf.h"
 #include "utils_misc.h"
 
 #include "tunnel_cmd.h"
 #include "tunnel_dns.h"
-#include "tunnel_local.h"
+#include "tunnel_conf.h"
 
 #include <assert.h>
 
@@ -85,9 +83,8 @@ typedef struct {
    int data_mark;
    u16 chann_idx;
    u16 magic_code;
-   tunnel_local_mode_t mode;
    local_front_state_t state;
-   tunnel_local_config_t conf;
+   tunnel_config_t conf;
    chann_t *tcpin;              /* tcp for listen */
    chann_t *tcpout;             /* tcp for forward */
    buf_t *bufout;               /* buf for forward */
@@ -130,10 +127,8 @@ _local_chann_open(chann_t *r) {
    c->node = lst_pushl(tun->active_lst ,c);
    buf_reset(c->bufin);
 
-   if (tun->mode == TUNNEL_LOCAL_MODE_FRONT) {
-      c->state = LOCAL_CHANN_STATE_WAIT_LOCAL; /* wait local connect cmd */
-      mnet_chann_set_cb(c->tcpin, _local_chann_tcpin_cb_front, c);
-   }
+   c->state = LOCAL_CHANN_STATE_WAIT_LOCAL; /* wait local connect cmd */
+   mnet_chann_set_cb(c->tcpin, _local_chann_tcpin_cb_front, c);
 }
 
 /* description: free local resources
@@ -578,11 +573,8 @@ _local_listen_cb(chann_event_t *e) {
    }
 }
 
-/* 
- */
-
 int
-tunnel_local_open(tunnel_local_config_t *conf) {
+tunnel_local_open(tunnel_config_t *conf) {
    tun_local_t *tun = _tun_local();
    if (conf && !tun->running) {
       memset(tun, 0, sizeof(*tun));
@@ -595,20 +587,16 @@ tunnel_local_open(tunnel_local_config_t *conf) {
       mnet_chann_set_cb(tun->tcpin, _local_listen_cb, tun);
       mnet_chann_listen_ex(tun->tcpin, conf->local_ipaddr, conf->local_port, 1);
 
-      if (conf->mode == TUNNEL_LOCAL_MODE_FRONT) {
-         tun->bufout = buf_create(TUNNEL_CHANN_BUF_SIZE);
-         tun->buftmp = buf_create(TUNNEL_CHANN_BUF_SIZE + 32);
-         assert(tun->bufout && tun->buftmp);
-         tun->tcpout = mnet_chann_open(CHANN_TYPE_STREAM);
-         mnet_chann_set_bufsize(tun->tcpout, 131072);
-         mnet_chann_set_cb(tun->tcpout, _local_tcpout_cb_front, tun);
-         mnet_chann_connect(tun->tcpout, conf->remote_ipaddr, conf->remote_port);
-      }
+      tun->bufout = buf_create(TUNNEL_CHANN_BUF_SIZE);
+      tun->buftmp = buf_create(TUNNEL_CHANN_BUF_SIZE + 32);
+      assert(tun->bufout && tun->buftmp);
+      tun->tcpout = mnet_chann_open(CHANN_TYPE_STREAM);
+      mnet_chann_set_bufsize(tun->tcpout, 131072);
+      mnet_chann_set_cb(tun->tcpout, _local_tcpout_cb_front, tun);
+      mnet_chann_connect(tun->tcpout, conf->remote_ipaddr, conf->remote_port);
 
-      tun->mode = conf->mode;
       tun->running = 1;
 
-      _info("local open mode %d\n", tun->mode);
       _info("local listen on %s:%d\n", conf->local_ipaddr, conf->local_port);
       _info("\n");
 
@@ -643,68 +631,8 @@ _local_send_echo(tun_local_t *tun) {
             mnet_chann_state(tun->tcpout), buf_buffered(tun->bufout));
 }
 
-
-static void
-_local_conf_get_values(tunnel_local_config_t *conf, char *argv[]) {
-
-   conf_t *cf = utils_conf_open(argv[1]);
-   if (cf == NULL) {
-      _err("fail to get conf from [%s]\n", argv[1]);
-      goto fail;
-   }
-
-   str_t *value = NULL;
-
-   char dbg_fname[32] = {0};
-
-   value = utils_conf_value(cf, "DEBUG_FILE");
-   strncpy(dbg_fname, str_cstr(value), str_len(value));
-
-   value = utils_conf_value(cf, "LOCAL_MODE");
-   if (str_cmp(value, "FRONT", 0) == 0) {
-      conf->mode = TUNNEL_LOCAL_MODE_FRONT;
-   } else {
-      goto fail;
-   }
-
-   value = utils_conf_value(cf, "LOCAL_IP");
-   strncpy(conf->local_ipaddr, str_cstr(value), str_len(value));
-   conf->local_port = atoi(str_cstr(utils_conf_value(cf, "LOCAL_PORT")));
-
-   if (conf->mode == TUNNEL_LOCAL_MODE_FRONT) {
-      value = utils_conf_value(cf, "REMOTE_IP");
-      strncpy(conf->remote_ipaddr, str_cstr(value), str_len(value));
-      conf->remote_port = atoi(str_cstr(utils_conf_value(cf, "REMOTE_PORT")));
-   }
-
-   value = utils_conf_value(cf, "REMOTE_USERNAME");
-   if (value) {
-      strncpy(conf->username, str_cstr(value), _MIN_OF(str_len(value), 32));
-   }
-
-   value = utils_conf_value(cf, "REMOTE_PASSWORD");
-   if (value) {
-      strncpy(conf->password, str_cstr(value), _MIN_OF(str_len(value), 32));
-   }
-
-   value = utils_conf_value(cf, "CRYPTO_RC4");
-   if (value && str_cmp(value, "NO", 0)==0) {
-      conf->crypto_rc4 = 0;
-   } else {
-      conf->crypto_rc4 = 1;
-   }
-
-  fail:
-   utils_conf_close(cf);
-
-   debug_open(dbg_fname);
-   debug_set_option(D_OPT_FILE);
-   debug_set_level(D_VERBOSE);
-}
-
 int
 main(int argc, char *argv[]) {
-
    if (argc != 2) {
       fprintf(stderr, "[local] %s LOCAL_CONFIG_FILE\n", argv[0]);
       return 0;
@@ -714,53 +642,50 @@ main(int argc, char *argv[]) {
    signal(SIGPIPE, SIG_IGN);
 #endif
 
-   tunnel_local_config_t conf = {TUNNEL_LOCAL_MODE_INVALID,0,0, "", ""};
+   tunnel_config_t conf;
 
-   _local_conf_get_values(&conf, argv);
+   if ( !tunnel_conf_get_values(&conf, argv) ) {
+      return 0;
+   }
 
-   if (conf.mode == TUNNEL_LOCAL_MODE_FRONT)
-   {
-      mnet_init();
+   debug_open(conf.dbg_fname);
+   debug_set_option(D_OPT_FILE);
+   debug_set_level(D_VERBOSE);
 
-      if (tunnel_local_open(&conf) > 0) {
-         tun_local_t *tun = _tun_local();
+   mnet_init();
 
-         tun->last_ti = _local_update_ti();
-         tun->key = rc4_hash_key(conf.password, strlen(conf.password));
+   if (tunnel_local_open(&conf) > 0) {
+      tun_local_t *tun = _tun_local();
 
-         for (int i=0;;i++) {
+      tun->last_ti = _local_update_ti();
+      tun->key = rc4_hash_key(conf.password, strlen(conf.password));
 
-            if (i >= TUNNEL_CHANN_MAX_COUNT) {
-               i = 0; mtime_sleep(1);
+      for (int i=0;;i++) {
+
+         if (i >= (TUNNEL_CHANN_MAX_COUNT >> tun->conf.power_save)) {
+            i = 0; mtime_sleep(1);
+         }
+
+         _local_update_ti();
+         mnet_poll( (1<<21) );
+
+         if (tun->ti - tun->last_ti > LOCAL_TIMEOUT_SECOND) {
+            tun->last_ti = tun->ti;
+
+            if (tun->data_mark <= 0) {
+               _local_send_echo(tun);
             }
+            tun->data_mark = 0;
 
-            _local_update_ti();
-            mnet_poll( (1<<21) );
-
-            if (tun->mode == TUNNEL_LOCAL_MODE_FRONT) {
-               if (tun->ti - tun->last_ti > LOCAL_TIMEOUT_SECOND) {
-                  tun->last_ti = tun->ti;
-
-                  if (tun->data_mark <= 0) {
-                     _local_send_echo(tun);
-                  }
-                  tun->data_mark = 0;
-
-                  mm_report(1);
-                  _verbose("channs count:%d\n", mnet_report(0));
-               }
-            }
+            mm_report(1);
+            _verbose("channs count:%d\n", mnet_report(0));
          }
       }
-
-      mnet_fini();
-   }
-   else {
-      _err("invalid tunnel mode %d !\n", conf.mode);
    }
 
+   mnet_fini();
    debug_close();
    return 0;
 }
 
-#endif
+#endif  /* TEST_TUNNEL_LOCAL */
