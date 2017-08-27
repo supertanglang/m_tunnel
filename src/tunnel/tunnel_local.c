@@ -564,10 +564,11 @@ static void
 _local_listen_cb(chann_event_t *e) {
    if (e->event == MNET_EVENT_ACCEPT) {
       tun_local_t *tun = _tun_local();
-      if (tun->chann_idx < TUNNEL_CHANN_MAX_COUNT) {
+      if (tun->state == LOCAL_FRONT_STATE_AUTHORIZED &&
+          tun->chann_idx < TUNNEL_CHANN_MAX_COUNT)
+      {
          _local_chann_open(e->r);
-      }
-      else {
+      } else {
          mnet_chann_close(e->r);
       }
    }
