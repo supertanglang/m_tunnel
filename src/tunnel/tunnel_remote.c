@@ -687,7 +687,7 @@ main(int argc, char *argv[]) {
 
    stm_init();
    mnet_init();
-   mthrd_init(MTHRD_MODE_POWER_HIGH);
+   dns_init();
 
    if (tunnel_remote_open(&conf) > 0) {
       tun_remote_t *tun = _tun_remote();
@@ -696,9 +696,9 @@ main(int argc, char *argv[]) {
       tun->key = rc4_hash_key(conf.password, strlen(conf.password));
 
       for (int i=0;;i++) {
-         
+
          _remote_update_ti();
-         mnet_poll( (1<<21) );
+         mnet_poll( 1 << (MNET_ONE_SECOND_BIT + 1) );
 
          /* close inactive client */
          while (lst_count(tun->leave_lst) > 0) {
@@ -746,7 +746,7 @@ main(int argc, char *argv[]) {
       }
    }
 
-   mthrd_fini();
+   dns_fini();
    stm_fini();
    mnet_fini();
    debug_close();

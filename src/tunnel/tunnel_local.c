@@ -666,7 +666,7 @@ main(int argc, char *argv[]) {
          }
 
          _local_update_ti();
-         mnet_poll( (1<<21) );
+         mnet_poll( 1 << (MNET_ONE_SECOND_BIT+1) );
 
          if (tun->ti - tun->last_ti > LOCAL_TIMEOUT_SECOND) {
             tun->last_ti = tun->ti;

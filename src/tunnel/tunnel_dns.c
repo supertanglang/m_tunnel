@@ -54,13 +54,10 @@ typedef struct {
 } dns_entry_t;
 
 typedef struct {
+   int init;
    dict_t *entry_dict;          /* for speed up query, in aux */
    stm_t *domain_stm;
 } dns_t;
-
-static dns_t g_dns;
-
-static int _dns_mthrd_func(void *opaque);
 
 static void
 _domain_stm_finalizer(void *ptr, void *ud) {
@@ -68,11 +65,7 @@ _domain_stm_finalizer(void *ptr, void *ud) {
 }
 
 static dns_t* _dns(void) {
-   if (g_dns.entry_dict == NULL) {
-      g_dns.entry_dict = dict_create(DEF_TUNNEL_DNS_COUNT, 0, NULL);
-      g_dns.domain_stm = stm_create("dns_domain_cache", _domain_stm_finalizer, NULL);
-      mthrd_after(MTHRD_AUX, _dns_mthrd_func, &g_dns, 0);
-   }
+   static dns_t g_dns;
    return &g_dns;
 }
 
@@ -169,11 +162,11 @@ _dns_entry_is_expired(dns_entry_t *e) {
 }
 
 int
-_dns_mthrd_func(void *opaque) {
+_dns_thrd_work_func(void *opaque) {
    dns_t *dns = (dns_t*)opaque;
 
    if (stm_count(dns->domain_stm) <= 0) {
-      mtime_sleep(1);
+      mtime_sleep(3);
    }
    else {
 
@@ -231,8 +224,34 @@ _dns_mthrd_func(void *opaque) {
    return 1;
 }
 
+
 /* Public Interfaces 
  */
+
+void
+dns_init(void) {
+   dns_t *dns = _dns();
+   if ( !dns->init ) {
+      dns->entry_dict = dict_create(DEF_TUNNEL_DNS_COUNT, 0, NULL);
+      dns->domain_stm = stm_create("dns_domain_cache", _domain_stm_finalizer, NULL);
+
+      mthrd_init(MTHRD_MODE_POWER_HIGH);
+      mthrd_suspend(MTHRD_MAIN); /* suspend forever */
+      mthrd_after(MTHRD_AUX, _dns_thrd_work_func, _dns(), 0);
+      dns->init = 1;
+   }
+}
+
+void
+dns_fini(void) {
+   dns_t *dns = _dns();
+   if ( dns->init ) {
+      mthrd_fini();
+      dict_destroy(dns->entry_dict);
+      dns->init = 0;
+   }
+}
+
 
 void
 dns_query_domain(const char *domain, int domain_len, dns_query_callback cb, void *opaque) {
