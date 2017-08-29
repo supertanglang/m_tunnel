@@ -224,6 +224,11 @@ _dns_thrd_work_func(void *opaque) {
    return 1;
 }
 
+static void
+_dict_finalizer(void *opaque, const char *key, int keylen, void *value, int *stop) {
+   mm_free(value);
+}
+
 
 /* Public Interfaces 
  */
@@ -247,7 +252,7 @@ dns_fini(void) {
    dns_t *dns = _dns();
    if ( dns->init ) {
       mthrd_fini();
-      dict_destroy(dns->entry_dict);
+      dict_destroy(dns->entry_dict, _dict_finalizer, NULL);
       dns->init = 0;
    }
 }
