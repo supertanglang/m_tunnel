@@ -345,7 +345,7 @@ _local_chann_tcpin_cb_front(chann_event_t *e) {
             }
          }
          else {
-            assert(0);
+            return;
          }
       }
       else if (fc->state == LOCAL_CHANN_STATE_ACCEPT)
@@ -375,9 +375,6 @@ _local_chann_tcpin_cb_front(chann_event_t *e) {
 
                   strncpy(addr, domain, dlen);
                   _front_cmd_connect(fc, TUNNEL_ADDR_TYPE_DOMAIN, addr, port);
-               }
-               else {
-                  assert(0);
                }
             }
          }
@@ -423,7 +420,7 @@ _local_tcpout_cb_front(chann_event_t *e) {
             tunnel_cmd_check(ob, &tcmd);
             if (tcmd.data_len > TUNNEL_CHANN_BUF_SIZE + 8) {
                _err("(out) invalid data size %d!\n", tcmd.data_len);
-               assert(0);
+               break;
             }
             ret = mnet_chann_recv(e->n, buf_addr(ob,buf_ptw(ob)), tcmd.data_len - buf_buffered(ob));
          }
@@ -449,7 +446,8 @@ _local_tcpout_cb_front(chann_event_t *e) {
 
          tunnel_cmd_check(ob, &tcmd);
          if (tcmd.cmd<=TUNNEL_CMD_NONE || tcmd.cmd>TUNNEL_CMD_DATA) {
-            assert(0);
+            _err("(out) invalid cmd !\n");
+            goto reset_buffer;
          }
 
          tun->data_mark++;

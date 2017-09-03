@@ -449,7 +449,7 @@ _remote_tcpin_cb(chann_event_t *e) {
          /* _verbose("%d, %d\n", tcmd.data_len, buf_buffered(ib)); */
          tunnel_cmd_check(ib, &tcmd);
          if (tcmd.cmd<=TUNNEL_CMD_NONE || tcmd.cmd>TUNNEL_CMD_DATA) {
-            assert(0);
+            goto reset_buffer;
          }
 
 
