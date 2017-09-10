@@ -29,8 +29,8 @@
 #include "m_debug.h"
 #include "m_rc4.h"
 
+#include "mnet_core.h"
 #include "plat_type.h"
-#include "plat_net.h"
 #include "plat_time.h"
 
 #include "utils_misc.h"
@@ -96,8 +96,8 @@ typedef struct {
 
 static tun_local_t _g_local;
 
-static void _local_chann_tcpin_cb_front(chann_event_t *e);
-static void _local_tcpout_cb_front(chann_event_t *e);
+static void _local_chann_tcpin_cb_front(chann_msg_t *e);
+static void _local_tcpout_cb_front(chann_msg_t *e);
 void tunnel_local_close(void);
 
 static inline tun_local_t* _tun_local(void) {
@@ -296,11 +296,11 @@ _local_buf_available(buf_t *b) {
 
 
 void
-_local_chann_tcpin_cb_front(chann_event_t *e) {
+_local_chann_tcpin_cb_front(chann_msg_t *e) {
    tun_local_t *tun = _tun_local();
    tun_local_chann_t *fc = (tun_local_chann_t*)e->opaque;
 
-   if (e->event == MNET_EVENT_RECV)
+   if (e->event == CHANN_EVENT_RECV)
    {
       int hlen = TUNNEL_CMD_CONST_HEADER_LEN;
       buf_t *ib = fc->bufin;
@@ -382,7 +382,7 @@ _local_chann_tcpin_cb_front(chann_event_t *e) {
 
       buf_reset(ib);
    }
-   else if (e->event == MNET_EVENT_DISCONNECT)
+   else if (e->event == CHANN_EVENT_DISCONNECT)
    {
       _verbose("(in) chann %u:%u close, mnet\n", fc->chann_id, fc->magic);
       _front_cmd_close(fc);
@@ -404,10 +404,10 @@ _local_chann_of_cmd(tun_local_t *tun, tunnel_cmd_t *tcmd) {
 }
 
 static void
-_local_tcpout_cb_front(chann_event_t *e) {
+_local_tcpout_cb_front(chann_msg_t *e) {
    tun_local_t *tun = _tun_local();
    
-   if (e->event == MNET_EVENT_RECV) {
+   if (e->event == CHANN_EVENT_RECV) {
       tunnel_cmd_t tcmd = {0, 0, 0, 0, NULL};
 
       for (;;) {
@@ -519,7 +519,7 @@ _local_tcpout_cb_front(chann_event_t *e) {
          buf_reset(ob);
       }
    }
-   else if (e->event == MNET_EVENT_CONNECTED) {
+   else if (e->event == CHANN_EVENT_CONNECTED) {
       unsigned char data[64] = {0};
       memset(data, 0, sizeof(data));
 
@@ -547,7 +547,7 @@ _local_tcpout_cb_front(chann_event_t *e) {
       _verbose("(out) connected, send auth request\n");
       tun->state = LOCAL_FRONT_STATE_CONNECTED;
    }
-   else if (e->event == MNET_EVENT_DISCONNECT)
+   else if (e->event == CHANN_EVENT_DISCONNECT)
    {
       _verbose("(out) chann close\n");
       tun->state = LOCAL_FRONT_STATE_NONE;
@@ -559,8 +559,8 @@ _local_tcpout_cb_front(chann_event_t *e) {
 }
 
 static void
-_local_listen_cb(chann_event_t *e) {
-   if (e->event == MNET_EVENT_ACCEPT) {
+_local_listen_cb(chann_msg_t *e) {
+   if (e->event == CHANN_EVENT_ACCEPT) {
       tun_local_t *tun = _tun_local();
       if (tun->state == LOCAL_FRONT_STATE_AUTHORIZED &&
           tun->chann_idx < TUNNEL_CHANN_MAX_COUNT)

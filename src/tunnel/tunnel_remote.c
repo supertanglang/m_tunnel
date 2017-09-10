@@ -19,7 +19,7 @@
 #include "m_debug.h"
 #include "m_rc4.h"
 
-#include "plat_net.h"
+#include "mnet_core.h"
 #include "plat_time.h"
 #include "plat_thread.h"
 
@@ -98,8 +98,8 @@ typedef struct {
 
 static tun_remote_t _g_remote;
 
-static void _remote_tcpout_cb(chann_event_t *e);
-static void _remote_tcpin_cb(chann_event_t *e);
+static void _remote_tcpout_cb(chann_msg_t *e);
+static void _remote_tcpin_cb(chann_msg_t *e);
 static void _remote_chann_close(tun_remote_chann_t*, int line);
 
 static inline tun_remote_t* _tun_remote(void) {
@@ -334,12 +334,13 @@ _remote_send_connect_result(tun_remote_client_t *c, u16 chann_id, u16 magic, int
       tun_remote_chann_t *rc = _remote_chann_of_id_magic(c, chann_id, magic);
 
       if (rc) {
-         int port = mnet_chann_port(rc->tcpout);
-         data[hlen + 1] = (port >> 8) & 0xff;
-         data[hlen + 2] = port & 0xff;
+         chann_addr_t addr;
+         mnet_chann_addr(rc->tcpout, &addr);
 
-         char *addr_str = mnet_chann_addr(rc->tcpout);
-         misc_hex_addr(addr_str, strlen(addr_str), &data[hlen+3], 4);
+         data[hlen + 1] = (addr.port >> 8) & 0xff;
+         data[hlen + 2] = addr.port & 0xff;
+
+         misc_hex_addr(addr.ip, strlen(addr.ip), &data[hlen+3], 4);
 
       } else {
          _err("fail to get connect result %u:%u\n", chann_id, magic);
@@ -409,13 +410,13 @@ _remote_chann_in_want_lst(tun_remote_client_t *c, tunnel_cmd_t *tcmd) {
 }
 
 void
-_remote_tcpin_cb(chann_event_t *e) {
+_remote_tcpin_cb(chann_msg_t *e) {
    tun_remote_client_t *c = (tun_remote_client_t*)e->opaque;
    if (c->bufin == NULL) {
       return;
    }
 
-   if (e->event == MNET_EVENT_RECV) {
+   if (e->event == CHANN_EVENT_RECV) {
       tunnel_cmd_t tcmd = {0, 0, 0, 0, NULL};
 
       for (;;) {
@@ -553,7 +554,7 @@ _remote_tcpin_cb(chann_event_t *e) {
          buf_reset(ib);
       }
    }
-   else if (e->event == MNET_EVENT_DISCONNECT)
+   else if (e->event == CHANN_EVENT_DISCONNECT)
    {
       _verbose("client %p close event !\n", c);
       lst_pushl(_tun_remote()->leave_lst, c);
@@ -566,11 +567,11 @@ _remote_buf_available(buf_t *b) {
 }
 
 void
-_remote_tcpout_cb(chann_event_t *e) {
+_remote_tcpout_cb(chann_msg_t *e) {
    tun_remote_chann_t *rc = (tun_remote_chann_t*)e->opaque;
    tun_remote_client_t *c = (tun_remote_client_t*)rc->client;
    
-   if (e->event == MNET_EVENT_RECV) {
+   if (e->event == CHANN_EVENT_RECV) {
       if (c->state == REMOTE_CLIENT_STATE_ACCEPT) {
          buf_t *ob = rc->bufout;
          int hlen = TUNNEL_CMD_CONST_HEADER_LEN;
@@ -594,14 +595,14 @@ _remote_tcpout_cb(chann_event_t *e) {
          buf_reset(ob);
       }
    }
-   else if (e->event == MNET_EVENT_CONNECTED) {
+   else if (e->event == CHANN_EVENT_CONNECTED) {
       if (rc->state < REMOTE_CHANN_STATE_CONNECTED) {
          _verbose("(out) chann %p %u:%u connected\n", rc->tcpout, rc->chann_id, rc->magic);
          rc->state = REMOTE_CHANN_STATE_CONNECTED;
          _remote_send_connect_result(c, rc->chann_id, rc->magic, 1);
       }
    }
-   else if (e->event == MNET_EVENT_DISCONNECT)
+   else if (e->event == CHANN_EVENT_DISCONNECT)
    {
       _verbose("(out) chann %u:%u close, mnet\n", rc->chann_id, rc->magic);
       _remote_send_close(c, rc, 1);
@@ -610,8 +611,8 @@ _remote_tcpout_cb(chann_event_t *e) {
 }
 
 static void
-_remote_listen_cb(chann_event_t *e) {
-   if (e->event == MNET_EVENT_ACCEPT) {
+_remote_listen_cb(chann_msg_t *e) {
+   if (e->event == CHANN_EVENT_ACCEPT) {
       tun_remote_t *tun = _tun_remote();
       if (lst_count(tun->clients_lst) < TUNNEL_REMOTE_MAX_CLIENT) {
          _remote_client_create(e->r);
