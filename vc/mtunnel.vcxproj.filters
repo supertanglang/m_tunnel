@@ -55,10 +55,13 @@
     <ClCompile Include="..\vendor\m_foundation\src\utils\utils_url.c">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="..\vendor\m_net\src\plat_net.c">
+    <ClCompile Include="..\vendor\m_foundation\src\plat\plat_type.c">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="..\vendor\m_foundation\src\plat\plat_type.c">
+    <ClCompile Include="..\vendor\m_net\src\mnet_core.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\tunnel\tunnel_conf.c">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
@@ -78,6 +81,7 @@
     <ClInclude Include="..\vendor\m_foundation\src\utils\utils_conf.h" />
     <ClInclude Include="..\vendor\m_foundation\src\utils\utils_str.h" />
     <ClInclude Include="..\vendor\m_foundation\src\utils\utils_url.h" />
-    <ClInclude Include="..\vendor\m_net\src\plat_net.h" />
+    <ClInclude Include="..\vendor\m_net\src\mnet_core.h" />
+    <ClInclude Include="..\src\tunnel\tunnel_conf.h" />
   </ItemGroup>
 </Project>

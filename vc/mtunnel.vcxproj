@@ -20,6 +20,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\tunnel\tunnel_cmd.c" />
+    <ClCompile Include="..\src\tunnel\tunnel_conf.c" />
     <ClCompile Include="..\src\tunnel\tunnel_local.c" />
     <ClCompile Include="..\src\utils\utils_misc.c" />
     <ClCompile Include="..\vendor\m_foundation\src\crypto\m_rc4.c" />
@@ -32,10 +33,11 @@
     <ClCompile Include="..\vendor\m_foundation\src\utils\utils_conf.c" />
     <ClCompile Include="..\vendor\m_foundation\src\utils\utils_str.c" />
     <ClCompile Include="..\vendor\m_foundation\src\utils\utils_url.c" />
-    <ClCompile Include="..\vendor\m_net\src\plat_net.c" />
+    <ClCompile Include="..\vendor\m_net\src\mnet_core.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\tunnel\tunnel_cmd.h" />
+    <ClInclude Include="..\src\tunnel\tunnel_conf.h" />
     <ClInclude Include="..\src\tunnel\tunnel_local.h" />
     <ClInclude Include="..\src\utils\utils_misc.h" />
     <ClInclude Include="..\vendor\m_foundation\src\crypto\m_rc4.h" />
@@ -50,7 +52,7 @@
     <ClInclude Include="..\vendor\m_foundation\src\utils\utils_conf.h" />
     <ClInclude Include="..\vendor\m_foundation\src\utils\utils_str.h" />
     <ClInclude Include="..\vendor\m_foundation\src\utils\utils_url.h" />
-    <ClInclude Include="..\vendor\m_net\src\plat_net.h" />
+    <ClInclude Include="..\vendor\m_net\src\mnet_core.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
