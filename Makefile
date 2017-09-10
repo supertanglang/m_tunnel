@@ -1,6 +1,6 @@
 
 CC=gcc
-CFLAGS= -Wall -std=c99 -Wdeprecated-declarations
+CFLAGS= -Wall -std=gnu99 -Wdeprecated-declarations
 
 DEBUG= -g
 RELEASE= -O2
