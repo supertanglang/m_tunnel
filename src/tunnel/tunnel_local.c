@@ -584,7 +584,7 @@ tunnel_local_open(tunnel_config_t *conf) {
 
       tun->tcpin = mnet_chann_open(CHANN_TYPE_STREAM);
       mnet_chann_set_cb(tun->tcpin, _local_listen_cb, tun);
-      mnet_chann_listen_ex(tun->tcpin, conf->local_ipaddr, conf->local_port, 1);
+      mnet_chann_listen(tun->tcpin, conf->local_ipaddr, conf->local_port, 1);
 
       tun->bufout = buf_create(TUNNEL_CHANN_BUF_SIZE);
       tun->buftmp = buf_create(TUNNEL_CHANN_BUF_SIZE + 32);
