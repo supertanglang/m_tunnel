@@ -536,11 +536,11 @@ _local_tcpout_cb_front(chann_msg_t *e) {
 
       /* user name */
       int uname_base = head_len + 1;
-      strncpy((char*)&data[uname_base], tun->conf.username, 16);
+      strncpy((char*)&data[uname_base], tun->conf.username, 32);
 
       /* user password */
       int passw_base = uname_base + 16;
-      strncpy((char*)&data[passw_base], tun->conf.password, 16);
+      strncpy((char*)&data[passw_base], tun->conf.password, 32);
 
       _front_send_remote_data(data, data_len);
 

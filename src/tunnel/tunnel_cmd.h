@@ -47,7 +47,7 @@ enum {
 
    TUNNEL_CMD_AUTH,
    /* REQUEST : AUTH_TYPE | USER_NAME | PASSWORD_PAYLOAD
-                1 byte    | 16 byte   | 16 bytes
+                1 byte    | 32 byte   | 32 bytes
 
       RESPONSE: 1/0 (SUCCESS/FAIL)
                 1 byte
