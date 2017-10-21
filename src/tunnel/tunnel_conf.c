@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "m_debug.h"
+#include "m_md5.h"
 
 #include "utils_conf.h"
 #include "utils_misc.h"
@@ -23,6 +24,25 @@ _get_ip_port(str_t *value, char *ip, int *port) {
       str_t *sub = str_sub(value, 0, pos);
       strncpy(ip, str_cstr(sub), str_len(sub));
       *port = atoi(str_cstr(str_sub(value, pos + 1, str_len(value))));
+      return 1;
+   }
+   return 0;
+}
+
+static int
+_get_md5_value(const char *value, int vlen, char *result) {
+   if (value && vlen > 0 && vlen<=32) {
+      char input[64];
+      memset(input, 0, 64);
+      strncpy(input, value, vlen);
+      strncpy(&input[vlen], "9$T%z4Ph", 8); /* add salt */
+      vlen += 8;
+      {
+         MD5_CTX ctx;
+         MD5_Init(&ctx);
+         MD5_Update(&ctx, value, vlen);
+         MD5_Final((unsigned char*)result, &ctx);
+      }
       return 1;
    }
    return 0;
@@ -65,12 +85,12 @@ tunnel_conf_get_values(tunnel_config_t *conf, char *argv[]) {
 
    value = utils_conf_value(cf, "USER_NAME");
    if (value) {
-      strncpy(conf->username, str_cstr(value), _MIN_OF(str_len(value), 32));
+      _get_md5_value((const char*)str_cstr(value), _MIN_OF(str_len(value), 32), conf->username);
    }
 
    value = utils_conf_value(cf, "PASS_WORD");
    if (value) {
-      strncpy(conf->password, str_cstr(value), _MIN_OF(str_len(value), 32));
+      _get_md5_value((const char*)str_cstr(value), _MIN_OF(str_len(value),32), conf->password);
    }
 
    ret = 1;
