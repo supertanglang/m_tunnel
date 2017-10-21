@@ -536,11 +536,11 @@ _local_tcpout_cb_front(chann_msg_t *e) {
 
       /* user name */
       int uname_base = head_len + 1;
-      strncpy((char*)&data[uname_base], tun->conf.username, 32);
+      memcpy((char*)&data[uname_base], tun->conf.username, 16);
 
       /* user password */
       int passw_base = uname_base + 16;
-      strncpy((char*)&data[passw_base], tun->conf.password, 32);
+      memcpy((char*)&data[passw_base], tun->conf.password, 16);
 
       _front_send_remote_data(data, data_len);
 
@@ -656,7 +656,7 @@ main(int argc, char *argv[]) {
       tun_local_t *tun = _tun_local();
 
       tun->last_ti = _local_update_ti();
-      tun->key = rc4_hash_key(conf.password, strlen(conf.password));
+      tun->key = rc4_hash_key(conf.password, 16);
 
       for (int i=0;;i++) {
 

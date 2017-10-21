@@ -531,8 +531,8 @@ _remote_tcpin_cb(chann_msg_t *e) {
                   tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_AUTH);
 
                   tun_remote_t *tun = _tun_remote();
-                  if (strncmp(tun->conf.username, username, 16)==0 &&
-                      strncmp(tun->conf.password, passwd, 16)==0)
+                  if (memcmp(tun->conf.username, username, 16)==0 &&
+                      memcmp(tun->conf.password, passwd, 16)==0)
                   {
                      c->state = REMOTE_CLIENT_STATE_ACCEPT;
                      data[data_len - 1] = 1;
@@ -647,7 +647,7 @@ tunnel_remote_open(tunnel_config_t *conf) {
 
       tun->running = 1;
 
-      _info("remote listen on %s:%d\n", conf->local_ipaddr, conf->local_port);
+      _info("remote listen on %s:%d\n", conf->remote_ipaddr, conf->remote_port);
       _info("\n");
 
       return 1;
@@ -694,7 +694,7 @@ main(int argc, char *argv[]) {
       tun_remote_t *tun = _tun_remote();
 
       tun->last_ti = _remote_update_ti();
-      tun->key = rc4_hash_key(conf.password, strlen(conf.password));
+      tun->key = rc4_hash_key(conf.password, 16);
 
       for (int i=0;;i++) {
 

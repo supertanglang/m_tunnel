@@ -14,8 +14,8 @@ typedef struct {
    int remote_port;
    char local_ipaddr[16];
    char remote_ipaddr[16];
-   char username[64];
-   char password[64];
+   char username[32];
+   char password[32];
    int crypto_rc4;              /* 0 to disble, default enable */
    int power_save;              /* 0 is highest */
 } tunnel_config_t;
