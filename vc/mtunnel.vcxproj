@@ -23,6 +23,7 @@
     <ClCompile Include="..\src\tunnel\tunnel_conf.c" />
     <ClCompile Include="..\src\tunnel\tunnel_local.c" />
     <ClCompile Include="..\src\utils\utils_misc.c" />
+    <ClCompile Include="..\vendor\m_foundation\src\crypto\m_md5.c" />
     <ClCompile Include="..\vendor\m_foundation\src\crypto\m_rc4.c" />
     <ClCompile Include="..\vendor\m_foundation\src\model\m_buf.c" />
     <ClCompile Include="..\vendor\m_foundation\src\model\m_debug.c" />
@@ -40,6 +41,7 @@
     <ClInclude Include="..\src\tunnel\tunnel_conf.h" />
     <ClInclude Include="..\src\tunnel\tunnel_local.h" />
     <ClInclude Include="..\src\utils\utils_misc.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\crypto\m_md5.h" />
     <ClInclude Include="..\vendor\m_foundation\src\crypto\m_rc4.h" />
     <ClInclude Include="..\vendor\m_foundation\src\model\m_buf.h" />
     <ClInclude Include="..\vendor\m_foundation\src\model\m_debug.h" />

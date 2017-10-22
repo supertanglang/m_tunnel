@@ -67,5 +67,5 @@ PASS_WORD=123456
 #CRYPTO_RC4=NO
 
 # 0 ~ 10, 0 to disable power save
-POWER_SAVE=2
+POWER_SAVE=10
 ```
