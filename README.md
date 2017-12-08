@@ -31,17 +31,24 @@ Download precompiled [Release](https://github.com/lalawue/m_tunnel/releases).
 
 # Compile & Running
 
-in MacOS/Linux, just
+1. in MacOS/Linux, first compile the source
 
 ```
 # git clone https://github.com/lalawue/m_tunnel.git
-# cd m_tunnel && git submodule update --init --recursive
-# make
+# cd m_tunnel
+# git submodule update --init --recursive
+# make release
+```
+
+in Windows, using VS2017 under vc dir, the .vcxproj just ready for client side.
+
+
+
+2. run remote & local
+```
 # ./tun_remote.out config/remote_conf.txt # in server
 # ./tun_local.out config/local_conf.txt   # in local
 ```
-
-in Windows, using VS2017 under vc dir.
 
 
 
