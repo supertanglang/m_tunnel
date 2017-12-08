@@ -29,11 +29,13 @@ Download precompiled [Release](https://github.com/lalawue/m_tunnel/releases).
 
 
 
-# Install & Running
+# Compile & Running
 
 in MacOS/Linux, just
 
 ```
+# git clone https://github.com/lalawue/m_tunnel.git
+# cd m_tunnel && git submodule update --init --recursive
 # make
 # ./tun_remote.out config/remote_conf.txt # in server
 # ./tun_local.out config/local_conf.txt   # in local
