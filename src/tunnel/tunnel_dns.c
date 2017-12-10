@@ -25,7 +25,7 @@
 #endif
 
 #include "m_mem.h"
-#include "m_dict.h"
+#include "m_map.h"
 #include "m_stm.h"
 #include "m_debug.h"
 
@@ -55,7 +55,7 @@ typedef struct {
 
 typedef struct {
    int init;
-   dict_t *entry_dict;          /* for speed up query, in aux */
+   map_t *entry_map;          /* for speed up query, in aux */
    stm_t *domain_stm;
 } dns_t;
 
@@ -80,7 +80,7 @@ _dns_entry_create(const char *domain, int domain_len, const char *addr, int addr
    strncpy(e->domain, domain, domain_len);
    strncpy(e->addr, addr, _MIN_OF(TUNNEL_DNS_ADDR_LEN, addr_len));
    e->date = _dns_date();
-   int ret = dict_set(dns->entry_dict, domain, domain_len, e);
+   int ret = map_set(dns->entry_map, domain, domain_len, e);
    _err("add dns entry [%s, %s], time:%d ret:%d\n", e->domain, e->addr, e->date, ret);
    return e;
 }
@@ -88,7 +88,7 @@ _dns_entry_create(const char *domain, int domain_len, const char *addr, int addr
 static void
 _dns_entry_destroy(dns_entry_t *e) {
    dns_t *dns = _dns();
-   dict_remove(dns->entry_dict, e->domain, strlen(e->domain));
+   map_remove(dns->entry_map, e->domain, strlen(e->domain));
    mm_free(e);
 }
 
@@ -180,7 +180,7 @@ _dns_thrd_work_func(void *opaque) {
          }
       }
       else {
-         dns_entry_t *ne = (dns_entry_t*)dict_get(dns->entry_dict, oe->domain, domain_len);
+         dns_entry_t *ne = (dns_entry_t*)map_get(dns->entry_map, oe->domain, domain_len);
          if ( !_dns_entry_is_expired(ne) ) {
             strcpy(oe->addr, ne->addr);
             if (oe->cb) {
@@ -225,7 +225,7 @@ _dns_thrd_work_func(void *opaque) {
 }
 
 static void
-_dict_finalizer(void *opaque, const char *key, int keylen, void *value, int *stop) {
+_map_finalizer(void *opaque, const void *key, int keylen, void *value, int *stop) {
    mm_free(value);
 }
 
@@ -237,7 +237,7 @@ void
 dns_init(void) {
    dns_t *dns = _dns();
    if ( !dns->init ) {
-      dns->entry_dict = dict_create(DEF_TUNNEL_DNS_COUNT, 0, NULL);
+      dns->entry_map = map_create(DEF_TUNNEL_DNS_COUNT, 0, NULL);
       dns->domain_stm = stm_create("dns_domain_cache", _domain_stm_finalizer, NULL);
 
       mthrd_init(MTHRD_MODE_POWER_HIGH);
@@ -252,7 +252,7 @@ dns_fini(void) {
    dns_t *dns = _dns();
    if ( dns->init ) {
       mthrd_fini();
-      dict_destroy(dns->entry_dict, _dict_finalizer, NULL);
+      map_destroy(dns->entry_map, _map_finalizer, NULL);
       dns->init = 0;
    }
 }
