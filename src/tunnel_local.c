@@ -22,13 +22,13 @@
 
 #include <unistd.h>
 #include <sys/time.h>
+#include <time.h>
+#include <signal.h>
 
 #endif
 
-#include <time.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <signal.h>
+#include "plat_type.h"
+#include "plat_time.h"
 
 #include "m_mem.h"
 #include "m_buf.h"
@@ -37,8 +37,6 @@
 #include "m_rc4.h"
 
 #include "mnet_core.h"
-#include "plat_type.h"
-#include "plat_time.h"
 
 #include "tunnel_cmd.h"
 #include "tunnel_dns.h"
