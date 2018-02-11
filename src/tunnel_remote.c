@@ -336,7 +336,7 @@ _remote_send_connect_result(tun_remote_client_t *c, u16 chann_id, u16 magic, int
          data[hlen + 1] = (addr.port >> 8) & 0xff;
          data[hlen + 2] = addr.port & 0xff;
 
-         _hex_addr(addr.ip, strlen(addr.ip), &data[hlen+3], 4);
+         _binary_addr(addr.ip, strlen(addr.ip), &data[hlen+3], 4);
 
       } else {
          _err("fail to get connect result %u:%u\n", chann_id, magic);

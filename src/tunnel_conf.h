@@ -24,7 +24,7 @@ static inline int _min_of(int a, int b) {
    return a < b ? a : b;
 }
 
-void _hex_addr(char *addr, int addr_len, unsigned char *e, int elen);
+void _binary_addr(char *addr, int addr_len, unsigned char *e, int elen);
 
 int tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]);
 

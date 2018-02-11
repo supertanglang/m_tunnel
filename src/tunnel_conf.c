@@ -54,7 +54,7 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
    if (value) {
       strncpy(conf->dbg_fname, value, 16);
    } else {
-      strncpy(conf->dbg_fname, "stdout", 5);
+      strncpy(conf->dbg_fname, "stdout", 6);
    }
 
 
@@ -75,7 +75,7 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
       conf->remote_port = addr.port;
    }
 
-   if (strlen(conf->local_ipaddr)<=0 || strlen(conf->remote_ipaddr)<=0) {
+   if (strlen(conf->local_ipaddr)<=0 && strlen(conf->remote_ipaddr)<=0) {
       fprintf(stderr, "tun: fail to parse addr !\n");
       goto fail;
    }
@@ -139,9 +139,11 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
          fprintf(stderr, "%s\n", err[i].string);
       }
    } else {
-      printf("tun: %s, %s:%d, %s:%d, %s:%s, %d:%d\n", conf->dbg_fname, conf->local_ipaddr, conf->local_port,
-             conf->remote_ipaddr, conf->remote_port, conf->username, conf->password, conf->crypto_rc4, 
-             conf->power_save);
+      printf("tun: %s, remote->%s:%d, local->%s:%d, rc4:power_save->%d:%d\n",
+             conf->dbg_fname,
+             conf->local_ipaddr, conf->local_port,
+             conf->remote_ipaddr, conf->remote_port,
+             conf->crypto_rc4, conf->power_save);
    }
 
    return ret;
@@ -149,7 +151,7 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
 
 
 void
-_hex_addr(char *addr, int addr_len, unsigned char *e, int elen) {
+_binary_addr(char *addr, int addr_len, unsigned char *e, int elen) {
    str_t *head = str_clone_cstr(addr, addr_len);
    str_t *sp = str_split(head, ".", 0);
    int i = 0;
