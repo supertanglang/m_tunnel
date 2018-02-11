@@ -33,8 +33,8 @@
 #include "plat_lock.h"
 #include "plat_thread.h"
 
-#include "utils_misc.h"
 #include "tunnel_dns.h"
+#include "tunnel_conf.h"
 
 #include <assert.h>
 
@@ -78,7 +78,7 @@ _dns_entry_create(const char *domain, int domain_len, const char *addr, int addr
    dns_t *dns = _dns();
    dns_entry_t *e = (dns_entry_t*)mm_malloc(sizeof(*e));
    strncpy(e->domain, domain, domain_len);
-   strncpy(e->addr, addr, _MIN_OF(TUNNEL_DNS_ADDR_LEN, addr_len));
+   strncpy(e->addr, addr, _min_of(TUNNEL_DNS_ADDR_LEN, addr_len));
    e->date = _dns_date();
    int ret = map_set(dns->entry_map, domain, domain_len, e);
    _err("add dns entry [%s, %s], time:%d ret:%d\n", e->domain, e->addr, e->date, ret);
@@ -189,7 +189,7 @@ _dns_thrd_work_func(void *opaque) {
          }
          else {
             char dn[TUNNEL_DNS_DOMAIN_LEN] = {0};
-            strncpy(dn, oe->domain, _MIN_OF(TUNNEL_DNS_DOMAIN_LEN, domain_len));
+            strncpy(dn, oe->domain, _min_of(TUNNEL_DNS_DOMAIN_LEN, domain_len));
 
             int addr_len = TUNNEL_DNS_ADDR_LEN;
             int found_addr = 0;
@@ -264,7 +264,7 @@ dns_query_domain(const char *domain, int domain_len, dns_query_callback cb, void
       dns_t *dns = _dns();
       dns_entry_t *e = (dns_entry_t*)mm_malloc(sizeof(*e));
 
-      strncpy(e->domain, domain, _MIN_OF(domain_len, TUNNEL_DNS_DOMAIN_LEN));
+      strncpy(e->domain, domain, _min_of(domain_len, TUNNEL_DNS_DOMAIN_LEN));
       e->date = _dns_date();
       e->cb = cb;
       e->opaque = opaque;

@@ -10,14 +10,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef _WIN32
+#include "plat_os.h"
+
+#if defined(PLAT_OS_WIN)
+
 #include <io.h>
 #include <process.h>
 #include <time.h>
+
 #else
+
 #include <unistd.h>
 #include <sys/time.h>
+
 #endif
+
 #include <time.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -32,8 +39,6 @@
 #include "mnet_core.h"
 #include "plat_type.h"
 #include "plat_time.h"
-
-#include "utils_misc.h"
 
 #include "tunnel_cmd.h"
 #include "tunnel_dns.h"
@@ -158,7 +163,7 @@ _local_chann_close(tun_local_chann_t *c, int line) {
 
 static int
 _hex_equal(uint8_t *s, int slen, uint8_t *e, int elen) {
-   int mlen = _MIN_OF(slen, elen);
+   int mlen = _min_of(slen, elen);
 
    for (int i=0; i<mlen; i++) {
       if (s[i] != e[i]) {
@@ -294,6 +299,16 @@ _local_buf_available(buf_t *b) {
    return (buf_available(b) - RC4_CRYPTO_OCCUPY); /* keep space for RC4 crypto */
 }
 
+static inline char*
+_fix_string_1024(char *p, int len) {
+   static char buf[1024];
+   for (int i=0; i<len; i++) {
+      buf[i] = p[i];
+   }
+   buf[len] = 0;
+   return buf;
+}
+
 
 void
 _local_chann_tcpin_cb_front(chann_msg_t *e) {
@@ -371,7 +386,7 @@ _local_chann_tcpin_cb_front(chann_msg_t *e) {
 
                   char addr[TUNNEL_DNS_DOMAIN_LEN] = {0};
                   _err("(in) chann %u:%u try connect [%s:%d]\n", fc->chann_id, fc->magic,
-                       misc_fix_str_1024(domain, dlen), port);
+                       _fix_string_1024(domain, dlen), port);
 
                   strncpy(addr, domain, dlen);
                   _front_cmd_connect(fc, TUNNEL_ADDR_TYPE_DOMAIN, addr, port);
@@ -636,13 +651,13 @@ main(int argc, char *argv[]) {
       return 0;
    }
 
-#ifndef _WIN32
+#if !defined(PLAT_OS_WIN)
    signal(SIGPIPE, SIG_IGN);
 #endif
 
    tunnel_config_t conf;
 
-   if ( !tunnel_conf_get_values(&conf, argv) ) {
+   if ( !tunnel_conf_get_values(&conf, argc, argv) ) {
       return 0;
    }
 

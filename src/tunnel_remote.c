@@ -23,10 +23,6 @@
 #include "plat_time.h"
 #include "plat_thread.h"
 
-#include "utils_str.h"
-#include "utils_conf.h"
-#include "utils_misc.h"
-
 #include "tunnel_cmd.h"
 #include "tunnel_dns.h"
 #include "tunnel_conf.h"
@@ -340,7 +336,7 @@ _remote_send_connect_result(tun_remote_client_t *c, u16 chann_id, u16 magic, int
          data[hlen + 1] = (addr.port >> 8) & 0xff;
          data[hlen + 2] = addr.port & 0xff;
 
-         misc_hex_addr(addr.ip, strlen(addr.ip), &data[hlen+3], 4);
+         _hex_addr(addr.ip, strlen(addr.ip), &data[hlen+3], 4);
 
       } else {
          _err("fail to get connect result %u:%u\n", chann_id, magic);
@@ -678,7 +674,7 @@ main(int argc, char *argv[]) {
 
    tunnel_config_t conf;
 
-   if ( !tunnel_conf_get_values(&conf, argv) ) {
+   if ( !tunnel_conf_get_values(&conf, argc, argv) ) {
       return 0;
    }
 
