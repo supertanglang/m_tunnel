@@ -19,10 +19,9 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\src\tunnel\tunnel_cmd.c" />
-    <ClCompile Include="..\src\tunnel\tunnel_conf.c" />
-    <ClCompile Include="..\src\tunnel\tunnel_local.c" />
-    <ClCompile Include="..\src\utils\utils_misc.c" />
+    <ClCompile Include="..\src\tunnel_cmd.c" />
+    <ClCompile Include="..\src\tunnel_conf.c" />
+    <ClCompile Include="..\src\tunnel_local.c" />
     <ClCompile Include="..\vendor\m_foundation\src\crypto\m_md5.c" />
     <ClCompile Include="..\vendor\m_foundation\src\crypto\m_rc4.c" />
     <ClCompile Include="..\vendor\m_foundation\src\model\m_buf.c" />
@@ -31,16 +30,14 @@
     <ClCompile Include="..\vendor\m_foundation\src\model\m_mem.c" />
     <ClCompile Include="..\vendor\m_foundation\src\plat\plat_time.c" />
     <ClCompile Include="..\vendor\m_foundation\src\plat\plat_type.c" />
-    <ClCompile Include="..\vendor\m_foundation\src\utils\utils_conf.c" />
+    <ClCompile Include="..\vendor\m_foundation\src\utils\utils_args.c" />
     <ClCompile Include="..\vendor\m_foundation\src\utils\utils_str.c" />
     <ClCompile Include="..\vendor\m_foundation\src\utils\utils_url.c" />
     <ClCompile Include="..\vendor\m_net\src\mnet_core.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\src\tunnel\tunnel_cmd.h" />
-    <ClInclude Include="..\src\tunnel\tunnel_conf.h" />
-    <ClInclude Include="..\src\tunnel\tunnel_local.h" />
-    <ClInclude Include="..\src\utils\utils_misc.h" />
+    <ClInclude Include="..\src\tunnel_cmd.h" />
+    <ClInclude Include="..\src\tunnel_conf.h" />
     <ClInclude Include="..\vendor\m_foundation\src\crypto\m_md5.h" />
     <ClInclude Include="..\vendor\m_foundation\src\crypto\m_rc4.h" />
     <ClInclude Include="..\vendor\m_foundation\src\model\m_buf.h" />
@@ -51,7 +48,7 @@
     <ClInclude Include="..\vendor\m_foundation\src\plat\plat_os.h" />
     <ClInclude Include="..\vendor\m_foundation\src\plat\plat_time.h" />
     <ClInclude Include="..\vendor\m_foundation\src\plat\plat_type.h" />
-    <ClInclude Include="..\vendor\m_foundation\src\utils\utils_conf.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\utils\utils_args.h" />
     <ClInclude Include="..\vendor\m_foundation\src\utils\utils_str.h" />
     <ClInclude Include="..\vendor\m_foundation\src\utils\utils_url.h" />
     <ClInclude Include="..\vendor\m_net\src\mnet_core.h" />
