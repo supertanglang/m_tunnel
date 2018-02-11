@@ -40,23 +40,17 @@ _get_md5_value(const char *value, char *result) {
 int
 tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
    int ret = 0;
+   args_t *ag = NULL;
 
-   if (conf==NULL || argc<=1 || argv==NULL) {
-      fprintf(stderr, "invalid params !\n");
-      return ret;
+   if (conf==NULL || argc<=1 || argv==NULL || (ag = utils_args_open(argc, (const char**)argv))==NULL) {
+      fprintf(stderr, "tun: fail to parse option !\n");
+      goto fail;
    }
    memset(conf, 0, sizeof(*conf));
 
-   args_t *ag = utils_args_open(argc, (const char**)argv);
-   if (ag == NULL) {
-      fprintf(stderr,
-              "-dbg output file name, default stdout\n");
-      goto fail;
-   }
-
 
    // debug output file name
-   const char *value = utils_args_string(ag, "-debug");
+   const char *value = utils_args_string(ag, "-d");
    if (value) {
       strncpy(conf->dbg_fname, value, 16);
    } else {
@@ -71,9 +65,6 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
    if (value && mnet_parse_ipport(value, &addr)) {
       strncpy(conf->local_ipaddr, addr.ip, 16);
       conf->local_port = addr.port;
-   } else {
-      fprintf(stderr, "fail to local ip !\n");
-      goto fail;
    }
 
 
@@ -82,8 +73,10 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
    if (value && mnet_parse_ipport(value, &addr)) {
       strncpy(conf->remote_ipaddr, addr.ip, 16);
       conf->remote_port = addr.port;
-   } else {
-      fprintf(stderr, "fail to remote ip !\n");
+   }
+
+   if (strlen(conf->local_ipaddr)<=0 || strlen(conf->remote_ipaddr)<=0) {
+      fprintf(stderr, "tun: fail to parse addr !\n");
       goto fail;
    }
 
@@ -93,12 +86,18 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
    value = utils_args_string(ag, "-u");
    if (value) {
       _get_md5_value(value, conf->username);
+   } else {
+      fprintf(stderr, "tun: fail to parse username !\n");
+      goto fail;      
    }
 
    // password
    value = utils_args_string(ag, "-p");
    if (value) {
       _get_md5_value(value, conf->password);
+   } else {
+      fprintf(stderr, "tun: fail to parse password !\n");
+      goto fail;      
    }
 
 
@@ -115,7 +114,7 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
 
    //
    conf->power_save = utils_args_integer(ag, "-power_save");
-   if (conf->power_save == 0x7fffffff) {
+   if (conf->power_save == UTILS_ARGS_INVALID_INTEGER) {
       conf->power_save = 10;
    }
 
@@ -123,9 +122,24 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
    utils_args_close(ag);
 
    if (ret <= 0) {
-      fprintf(stderr, "fail to parse config !\n");
+      struct s_error {
+         char *string;
+      };
+      struct s_error err[] = {
+         { " -l \t local ipport, '127.0.0.1:1234'" },
+         { " -r \t remote ipport" },
+         { " -u \t username" },
+         { " -p \t password" },
+         { " -d \t debug output file, default stdout" },         
+         { " -rc4 \t disablle RC4, default 'no'" },
+         { NULL },
+      };
+      fprintf(stderr, "usage: %s [options]\nAvailable options are:\n", argv[0]);
+      for (int i=0; err[i].string; i++) {
+         fprintf(stderr, "%s\n", err[i].string);
+      }
    } else {
-      printf("%s, %s:%d, %s:%d, %s:%s, %d:%d\n", conf->dbg_fname, conf->local_ipaddr, conf->local_port,
+      printf("tun: %s, %s:%d, %s:%d, %s:%s, %d:%d\n", conf->dbg_fname, conf->local_ipaddr, conf->local_port,
              conf->remote_ipaddr, conf->remote_port, conf->username, conf->password, conf->crypto_rc4, 
              conf->power_save);
    }

@@ -646,20 +646,15 @@ _local_send_echo(tun_local_t *tun) {
 
 int
 main(int argc, char *argv[]) {
-   if (argc != 2) {
-      fprintf(stderr, "[local] %s LOCAL_CONFIG_FILE\n", argv[0]);
+   tunnel_config_t conf;
+
+   if ( !tunnel_conf_get_values(&conf, argc, argv) ) {
       return 0;
    }
 
 #if !defined(PLAT_OS_WIN)
    signal(SIGPIPE, SIG_IGN);
 #endif
-
-   tunnel_config_t conf;
-
-   if ( !tunnel_conf_get_values(&conf, argc, argv) ) {
-      return 0;
-   }
 
    debug_open(conf.dbg_fname);
    debug_set_option(D_OPT_FILE);

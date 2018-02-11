@@ -665,18 +665,13 @@ _remote_active_client(tun_remote_client_t *c) {
 
 int
 main(int argc, char *argv[]) {
-   if (argc != 2) {
-      printf("[remote] %s REMOTE_CONFIG_FILE\n", argv[0]);
-      return 0;
-   }
-
-   signal(SIGPIPE, SIG_IGN);
-
    tunnel_config_t conf;
 
    if ( !tunnel_conf_get_values(&conf, argc, argv) ) {
       return 0;
    }
+
+   signal(SIGPIPE, SIG_IGN);   
 
    debug_open(conf.dbg_fname);
    debug_set_option(D_OPT_FILE);
