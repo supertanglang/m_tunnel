@@ -56,35 +56,6 @@ in Windows, using VS2017 under vc dir, the .vcxproj just ready for client side.
 
 2. run remote & local
 ```
-# ./tun_remote.out config/remote_conf.txt # in server
-# ./tun_local.out config/local_conf.txt   # in local
-```
-
-
-
-
-
-# Configure
-
-Under config dir, something like:
-
-```
-# file name for output
-DEBUG_FILE=stdout
-
-# local addr
-LOCAL_ADDR=127.0.0.1:1080
-
-# remote addr
-REMOTE_ADDR=192.168.2.101:9871
-
-# login info
-USER_NAME=112233
-PASS_WORD=123456
-
-# 'NO' to disable RC4 crypto
-#CRYPTO_RC4=NO
-
-# 0 ~ 10, 0 to disable power save
-POWER_SAVE=10
+# ./tun_remote.out -r "192.168.2.101:7777" -u username -p password   # in server
+# ./tun_local.out -l "127.0.0.1:8888" -r "192.168.2.101:7777" -u username -p password   # in local
 ```
