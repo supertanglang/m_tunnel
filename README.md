@@ -13,7 +13,7 @@
 
 m_tunnel was a secure TCP tunnel with sock5 proxy interface, action like shadowsocks. It's lightweight and play well with https://github.com/lalawue/m_kcptun or https://github.com/xtaci/kcptun.
 
-only support IPV4, under MacOS/Linux/Windows. 
+only support IPV4, under Linux/MacOS/FreeBSD/Windows. 
 
 using RC4 crypto from cloudwu's mptun https://github.com/cloudwu/mptun/.
 
@@ -41,7 +41,7 @@ Download precompiled [Release](https://github.com/lalawue/m_tunnel/releases).
 
 # Compile & Running
 
-1. in MacOS/Linux, first compile the source
+1. in Linux/MacOS/FreeBSD, first compile the source
 
 ```
 # git clone https://github.com/lalawue/m_tunnel.git
@@ -51,6 +51,8 @@ Download precompiled [Release](https://github.com/lalawue/m_tunnel/releases).
 ```
 
 in Windows, using VS2017 under vc dir, the .vcxproj just ready for client side.
+
+in FreeBSD, using gmake.
 
 
 
