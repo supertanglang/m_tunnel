@@ -29,12 +29,12 @@ INCS := $(foreach n, $(DIRS), -I$(n))
 all: debug
 
 debug: $(SRCS)
-	$(CC) $(DEBUG) $(CFLAGS) $(INCS) -o tun_local.out $^ $(LIBS) -DTEST_TUNNEL_LOCAL -DPLAT_THREAD
-	$(CC) $(DEBUG) $(CFLAGS) $(INCS) -o tun_remote.out $^ $(LIBS) -DTEST_TUNNEL_REMOTE -DPLAT_THREAD
+	$(CC) $(DEBUG) $(CFLAGS) $(INCS) -o tun_local.out $^ $(LIBS) -DTEST_TUNNEL_LOCAL
+	$(CC) $(DEBUG) $(CFLAGS) $(INCS) -o tun_remote.out $^ $(LIBS) -DTEST_TUNNEL_REMOTE -DTEST_TUNNEL_DNS
 
 release: $(SRCS)
-	$(CC) $(RELEASE) $(CFLAGS) $(INCS) -o tun_local.out $^ $(LIBS) -DTEST_TUNNEL_LOCAL -DPLAT_THREAD
-	$(CC) $(RELEASE) $(CFLAGS) $(INCS) -o tun_remote.out $^ $(LIBS) -DTEST_TUNNEL_REMOTE -DPLAT_THREAD
+	$(CC) $(RELEASE) $(CFLAGS) $(INCS) -o tun_local.out $^ $(LIBS) -DTEST_TUNNEL_LOCAL
+	$(CC) $(RELEASE) $(CFLAGS) $(INCS) -o tun_remote.out $^ $(LIBS) -DTEST_TUNNEL_REMOTE -DTEST_TUNNEL_DNS
 
 clean:
 	rm -rf *.out *.dSYM

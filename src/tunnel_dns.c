@@ -38,6 +38,8 @@
 
 #include <assert.h>
 
+#ifdef TEST_TUNNEL_DNS
+
 #define _err(...) _mlog("dns", D_ERROR, __VA_ARGS__)
 #define _info(...) _mlog("dns", D_INFO, __VA_ARGS__)
 
@@ -272,3 +274,5 @@ dns_query_domain(const char *domain, int domain_len, dns_query_callback cb, void
       stm_pushl(dns->domain_stm, e);
    }
 }
+
+#endif
