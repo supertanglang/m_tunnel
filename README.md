@@ -11,13 +11,17 @@
 
 # About
 
-m_tunnel was a secure TCP tunnel with sock5 proxy interface, action like shadowsocks. It's lightweight and play well with https://github.com/lalawue/m_kcptun or https://github.com/xtaci/kcptun.
+m_tunnel was a secure TCP tunnel with sock5 proxy interface, action like shadowsocks.
+It's lightweight and play well with [m_kcptun](https://github.com/lalawue/m_kcptun) or
+[kcptun](https://github.com/xtaci/kcptun).
 
 only support IPV4, under Linux/MacOS/FreeBSD/Windows. 
 
-using RC4 crypto from cloudwu's mptun https://github.com/cloudwu/mptun/.
+using RC4 crypto from cloudwu's [mptun](https://github.com/cloudwu/mptun).
 
-
+base on [m_net](https://github.com/lalawue/m_net),
+[m_foundation](https://github.com/lalawue/m_foundation),
+[m_dnscnt](https://github.com/lalawue/m_dnscnt).
 
 
 
@@ -25,6 +29,7 @@ using RC4 crypto from cloudwu's mptun https://github.com/cloudwu/mptun/.
 
 - only one tcp connection between local and remote
 - authentication only once, speed up every request
+- asynchronous DNS query in remote
 - socks5 proxy interface 
 - support Windows
 
@@ -58,6 +63,6 @@ in FreeBSD, using gmake.
 
 2. run remote & local
 ```
-# ./tun_remote.out -r "192.168.2.101:7777" -u username -p password   # in server
-# ./tun_local.out -l "127.0.0.1:8888" -r "192.168.2.101:7777" -u username -p password   # in local
+# ./tun_remote.out -r "192.168.2.101:7777" -u username -p password
+# ./tun_local.out -l "127.0.0.1:8888" -r "192.168.2.101:7777" -u username -p password
 ```
