@@ -35,6 +35,7 @@
 #include "m_list.h"
 #include "m_debug.h"
 #include "m_rc4.h"
+#include "m_timer.h"
 
 #include "mnet_core.h"
 
@@ -47,8 +48,6 @@
 #define _err(...) _mlog("local", D_ERROR, __VA_ARGS__)
 #define _info(...) _mlog("local", D_INFO, __VA_ARGS__)
 #define _verbose(...) _mlog("local", D_VERBOSE, __VA_ARGS__)
-
-#define LOCAL_TIMEOUT_SECOND 16
 
 #ifdef TEST_TUNNEL_LOCAL
 
@@ -81,7 +80,6 @@ typedef struct {
 typedef struct {
    int running;                 /* running status */
    time_t ti;
-   time_t last_ti;
    uint64_t key;
    int data_mark;
    u16 chann_idx;
@@ -97,13 +95,12 @@ typedef struct {
    tun_local_chann_t *channs[TUNNEL_CHANN_MAX_COUNT];
 } tun_local_t;
 
-static tun_local_t _g_local;
-
 static void _local_chann_tcpin_cb_front(chann_msg_t *e);
 static void _local_tcpout_cb_front(chann_msg_t *e);
 void tunnel_local_close(void);
 
 static inline tun_local_t* _tun_local(void) {
+   static tun_local_t _g_local;
    return &_g_local;
 }
 
@@ -642,6 +639,19 @@ _local_send_echo(tun_local_t *tun) {
             mnet_chann_state(tun->tcpout), buf_buffered(tun->bufout));
 }
 
+static void
+_local_tmr_callback(void *opaque) {
+   tun_local_t *tun = opaque;
+
+   if (tun->data_mark <= 0) {
+      _local_send_echo(tun);
+   }
+   tun->data_mark = 0;
+
+   mm_report(1);
+   _verbose("channs count:%d\n", mnet_report(0));
+}
+
 int
 main(int argc, char *argv[]) {
    tunnel_config_t conf;
@@ -658,8 +668,11 @@ main(int argc, char *argv[]) {
 
    if (tunnel_local_open(&conf) > 0) {
       tun_local_t *tun = _tun_local();
+      tmr_t *tmr = tmr_create_lst();
 
-      tun->last_ti = _local_update_ti();
+      _local_update_ti();
+      tmr_add(tmr, tun->ti, 30, 1, tun, _local_tmr_callback);
+
       tun->key = rc4_hash_key(conf.password, 16);
 
       for (int i=0;;i++) {
@@ -669,20 +682,13 @@ main(int argc, char *argv[]) {
          }
 
          _local_update_ti();
+         
          mnet_poll( 2000000 );
 
-         if (tun->ti - tun->last_ti > LOCAL_TIMEOUT_SECOND) {
-            tun->last_ti = tun->ti;
-
-            if (tun->data_mark <= 0) {
-               _local_send_echo(tun);
-            }
-            tun->data_mark = 0;
-
-            mm_report(1);
-            _verbose("channs count:%d\n", mnet_report(0));
-         }
+         tmr_update_lst(tmr, tun->ti);
       }
+
+      tmr_destroy_lst(tmr);
    }
 
    mnet_fini();
