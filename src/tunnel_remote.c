@@ -15,7 +15,6 @@
 
 #include "m_mem.h"
 #include "m_list.h"
-#include "m_stm.h"
 #include "m_debug.h"
 #include "m_rc4.h"
 
@@ -89,7 +88,6 @@ typedef struct {
    buf_t *buftmp;               /* buf for crypto */
    lst_t *clients_lst;          /* acitve cilent */
    lst_t *leave_lst;            /* client to leave */
-   stm_t *ip_stm;
 } tun_remote_t;
 
 static tun_remote_t _g_remote;
@@ -244,21 +242,6 @@ _remote_chann_of_id_magic(tun_remote_client_t *c, u16 chann_id, u16 magic) {
       }
    }
    return NULL;
-}
-
-static void
-_remote_aux_dns_cb(char *addr, int addr_len, void *opaque) {
-   tun_remote_t *tun = _tun_remote();
-   dns_query_t *q = (dns_query_t*)opaque;
-
-   if (addr) {
-      strncpy(q->addr, addr, addr_len);
-   }
-   else {
-      q->port = 0;
-   }
-
-   stm_pushl(tun->ip_stm, q);
 }
 
 static int
@@ -498,7 +481,7 @@ _remote_tcpin_cb(chann_msg_t *e) {
                   lst_pushf(c->want_lst, ptcmd);
                   
                   dns_query_t *query_entry = _dns_query_create(port, tcmd.chann_id, tcmd.magic, c);
-                  dns_query_domain(domain, strlen(domain), _remote_aux_dns_cb, query_entry);
+                  dns_query_domain(domain, strlen(domain), query_entry);
                }
             }
             else if (tcmd.cmd == TUNNEL_CMD_CLOSE) {
@@ -616,11 +599,6 @@ _remote_listen_cb(chann_msg_t *e) {
    }
 }
 
-static void
-_remote_stm_finalizer(void *ptr, void *ud) {
-   mm_free(ptr);
-}
-
 int
 tunnel_remote_open(tunnel_config_t *conf) {
    tun_remote_t *tun = _tun_remote();
@@ -630,7 +608,6 @@ tunnel_remote_open(tunnel_config_t *conf) {
       tun->conf = *conf;
       tun->clients_lst = lst_create();
       tun->leave_lst = lst_create();
-      tun->ip_stm = stm_create("remote_dns_cache", _remote_stm_finalizer, tun);
 
       tun->tcpin = mnet_chann_open(CHANN_TYPE_STREAM);
       mnet_chann_set_cb(tun->tcpin, _remote_listen_cb, tun);
@@ -663,6 +640,48 @@ _remote_active_client(tun_remote_client_t *c) {
    return NULL;
 }
 
+static void
+_remote_dns_cb(char *addr, int addr_len, void *opaque) {
+   dns_query_t *q = (dns_query_t*)opaque;
+
+   if (!q || !addr || addr_len<=0) {
+      q->port = 0;
+      return;
+   }
+
+   /* get dns query result */
+   strncpy(q->addr, addr, addr_len);      
+
+   /* check dns ip_stm, and create chann_id/magic paired socket */
+   tun_remote_client_t *c = q->opaque;
+
+   if ( _remote_active_client(c) ) {
+      tunnel_cmd_t tcmd;
+      int is_connect = 1;
+
+      tcmd.chann_id = q->chann_id;
+      tcmd.magic = q->magic;
+
+      /* check dns query chann_id/magic not in close_lst */
+      if ( _remote_chann_in_want_lst(c, &tcmd) ) {
+         if (q->port <= 0) {
+            is_connect = 0;
+         } else {
+            tun_remote_chann_t *rc = _remote_chann_open(c, &tcmd, q->addr, q->port);
+            if (rc == NULL) {
+               is_connect = 0;
+            }
+         }
+      }
+
+      if ( !is_connect ) {
+         _remote_send_connect_result(c, tcmd.chann_id, tcmd.magic, 0);
+      }
+   }
+   
+   _dns_query_destroy(q);         
+}
+
 int
 main(int argc, char *argv[]) {
    tunnel_config_t conf;
@@ -677,9 +696,8 @@ main(int argc, char *argv[]) {
    debug_set_option(D_OPT_FILE);
    debug_set_level(D_VERBOSE);
 
-   stm_init();
    mnet_init();
-   dns_init();
+   dns_init(_remote_dns_cb);
 
    if (tunnel_remote_open(&conf) > 0) {
       tun_remote_t *tun = _tun_remote();
@@ -690,43 +708,15 @@ main(int argc, char *argv[]) {
       for (int i=0;;i++) {
 
          _remote_update_ti();
-         mnet_poll( 1 << (MNET_ONE_SECOND_BIT + 1) );
+         mnet_poll( 2000000 );
 
          /* close inactive client */
          while (lst_count(tun->leave_lst) > 0) {
             _remote_client_destroy(lst_popf(tun->leave_lst));
          }
 
-         /* check dns ip_stm, and create chann_id/magic paired socket */
-         while (stm_count(tun->ip_stm) > 0) {
-            dns_query_t *q = stm_popf(tun->ip_stm);
-            tun_remote_client_t *c = q->opaque;
-
-            if ( _remote_active_client(c) ) {
-               tunnel_cmd_t tcmd;
-               int is_connect = 1;
-
-               tcmd.chann_id = q->chann_id;
-               tcmd.magic = q->magic;
-
-               /* check dns query chann_id/magic not in close_lst */
-               if ( _remote_chann_in_want_lst(c, &tcmd) ) {
-                  if (q->port <= 0) {
-                     is_connect = 0;
-                  } else {
-                     tun_remote_chann_t *rc = _remote_chann_open(c, &tcmd, q->addr, q->port);
-                     if (rc == NULL) {
-                        is_connect = 0;
-                     }
-                  }
-               }
-
-               if ( !is_connect ) {
-                  _remote_send_connect_result(c, tcmd.chann_id, tcmd.magic, 0);
-               }
-            }
-               
-            _dns_query_destroy(q);
+         if ((tun->ti & 7) == 3 || (tun->ti & 7)==4) {
+            dns_cleanup_query(3000000);
          }
 
          /* mem report */
@@ -739,7 +729,6 @@ main(int argc, char *argv[]) {
    }
 
    dns_fini();
-   stm_fini();
    mnet_fini();
    debug_close();
    return 0;

@@ -650,10 +650,6 @@ main(int argc, char *argv[]) {
       return 0;
    }
 
-#if !defined(PLAT_OS_WIN)
-   signal(SIGPIPE, SIG_IGN);
-#endif
-
    debug_open(conf.dbg_fname);
    debug_set_option(D_OPT_FILE);
    debug_set_level(D_VERBOSE);
@@ -673,7 +669,7 @@ main(int argc, char *argv[]) {
          }
 
          _local_update_ti();
-         mnet_poll( 1 << (MNET_ONE_SECOND_BIT+1) );
+         mnet_poll( 2000000 );
 
          if (tun->ti - tun->last_ti > LOCAL_TIMEOUT_SECOND) {
             tun->last_ti = tun->ti;

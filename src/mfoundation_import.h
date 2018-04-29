@@ -31,14 +31,9 @@
 #define M_FOUNDATION_IMPORT_MODEL_BUF  (M_FOUNDATION_IMPORT_MODEL_MEM)
 #define M_FOUNDATION_IMPORT_MODEL_LIST (M_FOUNDATION_IMPORT_MODEL_MEM)
 
-#define M_FOUNDATION_IMPORT_MODEL_MAP  (M_FOUNDATION_IMPORT_MODEL_MEM && \
-                                        M_FOUNDATION_IMPORT_MODEL_LIST)
+#ifdef TEST_TUNNEL_REMOTE
 #define M_FOUNDATION_IMPORT_MODEL_SKIPLIST (M_FOUNDATION_IMPORT_MODEL_MEM && \
                                             M_FOUNDATION_IMPORT_CRYPTO_PRNG)
-
-#ifdef TEST_TUNNEL_REMOTE
-#define M_FOUNDATION_IMPORT_MODEL_STM (M_FOUNDATION_IMPORT_MODEL_MEM && \
-                                       M_FOUNDATION_IMPORT_MODEL_LIST)
 #endif
 
 #endif  /* M_FOUNDATION_IMPORT_MODEL */
@@ -51,19 +46,9 @@
 /* some type relative func under win */
 #define M_FOUNDATION_IMPORT_PLAT_TYPE 1
 
-/* for win to cover string to UTF-8 */
-//#define M_FOUNDATION_IMPORT_PLAT_CHARSET 1
-
 /* time for win/nix */
 #define M_FOUNDATION_IMPORT_PLAT_TIME    1
 
-//#define M_FOUNDATION_IMPORT_PLAT_DIR (M_FOUNDATION_IMPORT_MODEL_MEM && \
-//                                      M_FOUNDATION_IMPORT_MODEL_DEBUG && \
-//                                      M_FOUNDATION_IMPORT_PLAT_CHARSET)
-/* thread operation for win/nix*/
-#define M_FOUNDATION_IMPORT_PLAT_THREAD (M_FOUNDATION_IMPORT_MODEL_MEM && \
-                                         M_FOUNDATION_IMPORT_MODEL_LIST && \
-                                         M_FOUNDATION_IMPORT_PLAT_TIME)
 #endif  /* M_FOUNDATION_IMPORT_PLAT */
 
 
