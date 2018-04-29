@@ -1,4 +1,5 @@
 
+
 [![MIT licensed][1]][2]  [![Build Status][3]][4]
 
 [1]: https://img.shields.io/badge/license-MIT-blue.svg
@@ -9,19 +10,18 @@
 
 
 
+
+
 # About
 
 m_tunnel was a secure TCP tunnel with sock5 proxy interface, action like shadowsocks.
 It's lightweight and play well with [m_kcptun](https://github.com/lalawue/m_kcptun) or
-[kcptun](https://github.com/xtaci/kcptun).
+[kcptun](https://github.com/xtaci/kcptun), using RC4 crypto from cloudwu's [mptun](https://github.com/cloudwu/mptun).
 
-only support IPV4, under Linux/MacOS/FreeBSD/Windows. 
+only support IPV4, under Linux/MacOS/FreeBSD/Windows, base on [m_net](https://github.com/lalawue/m_net),
+[m_foundation](https://github.com/lalawue/m_foundation), [m_dnscnt](https://github.com/lalawue/m_dnscnt).
 
-using RC4 crypto from cloudwu's [mptun](https://github.com/cloudwu/mptun).
 
-base on [m_net](https://github.com/lalawue/m_net),
-[m_foundation](https://github.com/lalawue/m_foundation),
-[m_dnscnt](https://github.com/lalawue/m_dnscnt).
 
 
 
@@ -32,6 +32,7 @@ base on [m_net](https://github.com/lalawue/m_net),
 - asynchronous DNS query in remote
 - socks5 proxy interface 
 - support Windows
+
 
 
 
