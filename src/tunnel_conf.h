@@ -17,7 +17,6 @@ typedef struct {
    char username[32];
    char password[32];
    int crypto_rc4;              /* 0 to disble, default enable */
-   int power_save;              /* 0 is highest */
 } tunnel_config_t;
 
 static inline int _min_of(int a, int b) {

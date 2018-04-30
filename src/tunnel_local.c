@@ -613,12 +613,6 @@ tunnel_local_open(tunnel_config_t *conf) {
    return 0;
 }
 
-static inline time_t
-_local_update_ti() {
-   _tun_local()->ti = time(NULL);
-   return _tun_local()->ti;
-}
-
 static void
 _local_send_echo(tun_local_t *tun) {
    unsigned char data[32] = {0};
@@ -633,7 +627,6 @@ _local_send_echo(tun_local_t *tun) {
    data[data_len - 1] = 1;
 
    _front_send_remote_data(data, data_len);
-   _local_update_ti();
 
    _verbose("send echo state:%d buffered:%d\n",
             mnet_chann_state(tun->tcpout), buf_buffered(tun->bufout));
@@ -650,6 +643,12 @@ _local_tmr_callback(tmr_timer_t *tm, void *opaque) {
 
    mm_report(1);
    _verbose("channs count:%d\n", mnet_report(0));
+}
+
+static inline time_t
+_local_update_ti() {
+   _tun_local()->ti = time(NULL);
+   return _tun_local()->ti;
 }
 
 int
@@ -677,8 +676,8 @@ main(int argc, char *argv[]) {
 
       for (int i=0;;i++) {
 
-         if (i >= (TUNNEL_CHANN_MAX_COUNT >> tun->conf.power_save)) {
-            i = 0; mtime_sleep(1);
+         if (i >= TUNNEL_CHANN_MAX_COUNT) {
+            i=0; mtime_sleep(1);
          }
 
          _local_update_ti();

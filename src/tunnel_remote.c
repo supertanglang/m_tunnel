@@ -334,13 +334,6 @@ _remote_send_connect_result(tun_remote_client_t *c, u16 chann_id, u16 magic, int
    }
 }
 
-static inline time_t
-_remote_update_ti() {
-   time_t ti = time(NULL);
-   _tun_remote()->ti = ti;
-   return ti;
-}
-
 static void
 _remote_send_echo(tun_remote_client_t *c) {
    unsigned char data[32] = {0};
@@ -354,7 +347,6 @@ _remote_send_echo(tun_remote_client_t *c) {
    data[data_len - 1] = 1;
 
    _remote_send_front_data(c, data, data_len);
-   _remote_update_ti();
 
    _verbose("response echo to %p\n", c);
 }
@@ -696,6 +688,13 @@ _remote_tmr_callback(tmr_timer_t *tm, void *opaque) {
    }
 }
 
+static inline time_t
+_remote_update_ti() {
+   time_t ti = time(NULL);
+   _tun_remote()->ti = ti;
+   return ti;
+}
+
 int
 main(int argc, char *argv[]) {
    tunnel_config_t conf;
@@ -703,8 +702,6 @@ main(int argc, char *argv[]) {
    if ( !tunnel_conf_get_values(&conf, argc, argv) ) {
       return 0;
    }
-
-   signal(SIGPIPE, SIG_IGN);   
 
    debug_open(conf.dbg_fname);
    debug_set_option(D_OPT_FILE);

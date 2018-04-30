@@ -112,12 +112,6 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
       conf->crypto_rc4 = 1;
    }
 
-   //
-   conf->power_save = utils_args_integer(ag, "-power_save");
-   if (conf->power_save == UTILS_ARGS_INVALID_INTEGER) {
-      conf->power_save = 10;
-   }
-
   fail:
    utils_args_close(ag);
 
@@ -139,11 +133,11 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
          fprintf(stderr, "%s\n", err[i].string);
       }
    } else {
-      printf("tun: %s, remote->%s:%d, local->%s:%d, rc4:power_save->%d:%d\n",
+      printf("tun: %s, remote->%s:%d, local->%s:%d, rc4->%d\n",
              conf->dbg_fname,
              conf->local_ipaddr, conf->local_port,
              conf->remote_ipaddr, conf->remote_port,
-             conf->crypto_rc4, conf->power_save);
+             conf->crypto_rc4);
    }
 
    return ret;
