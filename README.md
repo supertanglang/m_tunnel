@@ -29,7 +29,7 @@ only support IPV4, under Linux/MacOS/FreeBSD/Windows, base on [m_net](https://gi
 
 - only one tcp connection between local and remote
 - authentication only once, speed up every request
-- asynchronous DNS query in remote
+- concurrency DNS query in remote
 - socks5 proxy interface 
 - support Windows
 
