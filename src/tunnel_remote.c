@@ -17,6 +17,7 @@
 #include "m_list.h"
 #include "m_debug.h"
 #include "m_rc4.h"
+#include "m_timer.h"
 
 #include "mnet_core.h"
 #include "plat_time.h"
@@ -34,7 +35,7 @@
 
 #ifdef TEST_TUNNEL_REMOTE
 
-#define TUNNEL_REMOTE_MAX_CLIENT (16)
+#define TUNNEL_REMOTE_MAX_CLIENT (128)
 
 typedef enum {
    REMOTE_CLIENT_STATE_NONE = 0,
@@ -81,13 +82,13 @@ typedef struct {
 typedef struct {
    int running;
    time_t ti;
-   time_t last_ti;
    uint64_t key;
    tunnel_config_t conf;
    chann_t *tcpin;
    buf_t *buftmp;               /* buf for crypto */
    lst_t *clients_lst;          /* acitve cilent */
    lst_t *leave_lst;            /* client to leave */
+   tmr_timer_t *tm_cleanup;
 } tun_remote_t;
 
 static tun_remote_t _g_remote;
@@ -595,6 +596,8 @@ _remote_listen_cb(chann_msg_t *e) {
       tun_remote_t *tun = _tun_remote();
       if (lst_count(tun->clients_lst) < TUNNEL_REMOTE_MAX_CLIENT) {
          _remote_client_create(e->r);
+      } else {
+         mnet_chann_close(e->r);
       }
    }
 }
@@ -682,6 +685,17 @@ _remote_dns_cb(char *addr, int addr_len, void *opaque) {
    _dns_query_destroy(q);         
 }
 
+static void
+_remote_tmr_callback(tmr_timer_t *tm, void *opaque) {
+   tun_remote_t *tun = opaque;
+   if (tm == tun->tm_cleanup) {
+      dns_cleanup_query(3000000);
+   } else {
+      mm_report(1);
+      _verbose("channs count:%d\n", mnet_report(0));
+   }
+}
+
 int
 main(int argc, char *argv[]) {
    tunnel_config_t conf;
@@ -701,31 +715,29 @@ main(int argc, char *argv[]) {
 
    if (tunnel_remote_open(&conf) > 0) {
       tun_remote_t *tun = _tun_remote();
+      tmr_t *tmr = tmr_create_lst();
 
-      tun->last_ti = _remote_update_ti();
+      _remote_update_ti();
       tun->key = rc4_hash_key(conf.password, 16);
+
+      tun->tm_cleanup = tmr_add(tmr, tun->ti, 4, 1, tun, _remote_tmr_callback);
+      tmr_add(tmr, tun->ti, 60, 1, tun, _remote_tmr_callback);
 
       for (int i=0;;i++) {
 
          _remote_update_ti();
+
          mnet_poll( 2000000 );
+
+         tmr_update_lst(tmr, tun->ti);
 
          /* close inactive client */
          while (lst_count(tun->leave_lst) > 0) {
             _remote_client_destroy(lst_popf(tun->leave_lst));
          }
-
-         if ((tun->ti & 7) == 3 || (tun->ti & 7)==4) {
-            dns_cleanup_query(3000000);
-         }
-
-         /* mem report */
-         if (tun->ti - tun->last_ti > 60) {
-            tun->last_ti = tun->ti;
-            mm_report(1);
-            _verbose("channs count:%d\n", mnet_report(0));
-         }
       }
+
+      tmr_destroy_lst(tmr);
    }
 
    dns_fini();
