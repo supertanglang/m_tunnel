@@ -636,7 +636,7 @@ _local_send_echo(tun_local_t *tun) {
 
 static void
 _local_tmr_callback(tmr_timer_t *tm, void *opaque) {
-   tun_local_t *tun = opaque;
+   tun_local_t *tun = (tun_local_t*)opaque;
 
    if (tun->data_mark <= 0) {
       _local_send_echo(tun);

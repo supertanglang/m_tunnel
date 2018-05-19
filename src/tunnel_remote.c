@@ -5,13 +5,12 @@
  * under the terms of the MIT license. See LICENSE for details.
  */
 
+#define  _CRT_SECURE_NO_WARNINGS
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <time.h>
-#include <signal.h>
-#include <sys/time.h>
 
 #include "m_mem.h"
 #include "m_list.h"
@@ -145,13 +144,13 @@ _remote_client_destroy(tun_remote_client_t *c) {
       c->bufin = NULL;
 
       while (lst_count(c->active_lst) > 0) {
-         tun_remote_chann_t *rc = lst_first(c->active_lst);
+         tun_remote_chann_t *rc = (tun_remote_chann_t*)lst_first(c->active_lst);
          _remote_chann_close(rc, __LINE__);
       }
       lst_destroy(c->active_lst);
 
       while (lst_count(c->free_lst) > 0) {
-         tun_remote_chann_t *rc = lst_popf(c->free_lst);
+         tun_remote_chann_t *rc = (tun_remote_chann_t*)lst_popf(c->free_lst);
          buf_destroy(rc->bufout);
          mm_free(rc);
       }
@@ -177,7 +176,7 @@ _remote_chann_open(tun_remote_client_t *c, tunnel_cmd_t *tcmd, char *addr, int p
    }
 
    if (lst_count(c->free_lst) > 0) {
-      rc = lst_popf(c->free_lst);
+      rc = (tun_remote_chann_t*)lst_popf(c->free_lst);
    } else {
       rc = (tun_remote_chann_t*)mm_malloc(sizeof(*rc));
    }
@@ -258,7 +257,7 @@ _remote_send_front_data(tun_remote_client_t *c, unsigned char *buf, u16 buf_len)
                                  &tbuf[base], buf_len(tun->buftmp)-base,
                                  tun->key, tun->ti);
       if (data_len > 0) {
-         tunnel_cmd_data_len((void*)tbuf, 1, data_len + base);
+         tunnel_cmd_data_len((u8*)tbuf, 1, data_len + base);
          return mnet_chann_send(c->tcpin, tbuf, data_len + base);
       }
    }
@@ -279,8 +278,8 @@ _remote_recv_front_data(tun_remote_client_t *c, buf_t *b) {
       char *tbuf = (char*)buf_addr(tun->buftmp,0);
       int base = TUNNEL_CMD_CONST_DATA_LEN_OFFSET;      
 
-      u16 data_len = rc4_decrypt(&buf[base], buf_len-base,
-                                 tbuf, buf_len(tun->buftmp),
+      u16 data_len = rc4_decrypt((const char*)&buf[base], buf_len-base,
+                                 (char*)tbuf, buf_len(tun->buftmp),
                                  tun->key, tun->ti);
       if (data_len <= 0) {
          _err("invalid data_len !\n");
@@ -288,7 +287,7 @@ _remote_recv_front_data(tun_remote_client_t *c, buf_t *b) {
       }
 
       memcpy(&buf[base], tbuf, data_len);
-      tunnel_cmd_data_len((void*)buf, 1, data_len + base);
+      tunnel_cmd_data_len((u8*)buf, 1, data_len + base);
 
       buf_reset(b);
       buf_forward_ptw(b, data_len + base);
@@ -371,7 +370,7 @@ int
 _remote_chann_in_want_lst(tun_remote_client_t *c, tunnel_cmd_t *tcmd) {
    int is_want = 0;
    lst_foreach(it, c->want_lst) {
-      tunnel_cmd_t *ptcmd = lst_iter_data(it);
+      tunnel_cmd_t *ptcmd = (tunnel_cmd_t*)lst_iter_data(it);
       if (ptcmd->chann_id==tcmd->chann_id && ptcmd->magic==tcmd->magic) {
          mm_free(ptcmd);
          lst_iter_remove(it);
@@ -627,7 +626,7 @@ static tun_remote_client_t*
 _remote_active_client(tun_remote_client_t *c) {
    tun_remote_t *tun = _tun_remote();
    lst_foreach(it, tun->clients_lst) {
-      tun_remote_client_t *lc = lst_iter_data(it);
+      tun_remote_client_t *lc = (tun_remote_client_t*)lst_iter_data(it);
       if (lc == c) {
          return c;
       }
@@ -648,7 +647,7 @@ _remote_dns_cb(char *addr, int addr_len, void *opaque) {
    strncpy(q->addr, addr, addr_len);      
 
    /* check dns ip_stm, and create chann_id/magic paired socket */
-   tun_remote_client_t *c = q->opaque;
+   tun_remote_client_t *c = (tun_remote_client_t*)q->opaque;
 
    if ( _remote_active_client(c) ) {
       tunnel_cmd_t tcmd;
@@ -679,7 +678,7 @@ _remote_dns_cb(char *addr, int addr_len, void *opaque) {
 
 static void
 _remote_tmr_callback(tmr_timer_t *tm, void *opaque) {
-   tun_remote_t *tun = opaque;
+   tun_remote_t *tun = (tun_remote_t*)opaque;
    if (tm == tun->tm_cleanup) {
       dns_cleanup_query(3000000);
    } else {
@@ -730,7 +729,7 @@ main(int argc, char *argv[]) {
 
          /* close inactive client */
          while (lst_count(tun->leave_lst) > 0) {
-            _remote_client_destroy(lst_popf(tun->leave_lst));
+            _remote_client_destroy((tun_remote_client_t*)lst_popf(tun->leave_lst));
          }
       }
 
