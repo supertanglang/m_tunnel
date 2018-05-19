@@ -75,6 +75,7 @@ typedef struct {
    chann_t *tcpin;              /* for input */
    buf_t *bufin;                /* buf for input */
    lst_node_t *node;            /* node in active_list */
+   int data_mark;               /* data mark */
 } tun_local_chann_t;
 
 typedef struct {
@@ -330,6 +331,7 @@ _local_chann_tcpin_cb_front(chann_msg_t *e) {
          tunnel_cmd_chann_magic(data, 1, fc->magic);
          tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_DATA);
 
+         fc->data_mark += !!data_len;
          _front_send_remote_data(data, data_len);
       }
       else if (fc->state == LOCAL_CHANN_STATE_WAIT_LOCAL) 
@@ -640,6 +642,17 @@ _local_tmr_callback(tmr_timer_t *tm, void *opaque) {
       _local_send_echo(tun);
    }
    tun->data_mark = 0;
+
+   lst_foreach(it, tun->active_lst) {
+      tun_local_chann_t *fc = (tun_local_chann_t*)lst_iter_data(it);
+      if (fc->data_mark > 0) {
+         fc->data_mark = 0;
+      } else {
+         _verbose("(tmr) chann %u:%u close, mnet\n", fc->chann_id, fc->magic);         
+         _front_cmd_close(fc);
+         _local_chann_close(fc, __LINE__);
+      }
+   }
 
    mm_report(1);
    _verbose("channs count:%d\n", mnet_report(0));
