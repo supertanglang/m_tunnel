@@ -682,8 +682,15 @@ _remote_tmr_callback(tmr_timer_t *tm, void *opaque) {
    if (tm == tun->tm_cleanup) {
       dns_cleanup_query(3000000);
    } else {
+      uint64_t rcv_bytes=0, snd_bytes=0;
+      lst_foreach(it, tun->clients_lst) {
+         tun_remote_client_t *c = (tun_remote_client_t*)lst_iter_data(it);
+         rcv_bytes += mnet_chann_bytes(c->tcpin, 0);
+         snd_bytes += mnet_chann_bytes(c->tcpin, 1);
+      }
       mm_report(1);
-      _verbose("channs count:%d\n", mnet_report(0));
+      _info("channs count:%d, rcv:%.3fMb, snd:%.3fMb\n",
+            mnet_report(0), ((double)rcv_bytes)/1048576.0, ((double)snd_bytes)/1048576.0);
    }
 }
 
@@ -704,7 +711,7 @@ main(int argc, char *argv[]) {
 
    debug_open(conf.dbg_fname);
    debug_set_option(D_OPT_FILE);
-   debug_set_level(D_VERBOSE);
+   debug_set_level(D_INFO);
 
    mnet_init();
    dns_init(_remote_dns_cb);

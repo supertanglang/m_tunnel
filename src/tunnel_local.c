@@ -382,8 +382,8 @@ _local_chann_tcpin_cb_front(chann_msg_t *e) {
                   int port = (rd[5+dlen]<<8) | rd[6+dlen];
 
                   char addr[TUNNEL_DNS_DOMAIN_LEN] = {0};
-                  _err("(in) chann %u:%u try connect [%s:%d]\n", fc->chann_id, fc->magic,
-                       _fix_string_1024(domain, dlen), port);
+                  _verbose("(in) chann %u:%u try connect [%s:%d]\n", fc->chann_id, fc->magic,
+                           _fix_string_1024(domain, dlen), port);
 
                   strncpy(addr, domain, dlen);
                   _front_cmd_connect(fc, TUNNEL_ADDR_TYPE_DOMAIN, addr, port);
@@ -655,7 +655,10 @@ _local_tmr_callback(tmr_timer_t *tm, void *opaque) {
    }
 
    mm_report(1);
-   _verbose("channs count:%d\n", mnet_report(0));
+   _info("channs count:%d, rcv:%.3fMb, snd:%.3fMb\n",
+         mnet_report(0),
+         ((double)mnet_chann_bytes(tun->tcpout, 0))/1048576.0,
+         ((double)mnet_chann_bytes(tun->tcpout, 1))/1048576.0);
 }
 
 static inline time_t
@@ -674,7 +677,7 @@ main(int argc, char *argv[]) {
 
    debug_open(conf.dbg_fname);
    debug_set_option(D_OPT_FILE);
-   debug_set_level(D_VERBOSE);
+   debug_set_level(D_INFO);
 
    mnet_init();
 
