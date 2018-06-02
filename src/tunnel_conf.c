@@ -135,7 +135,7 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
          fprintf(stderr, "%s\n", err[i].string);
       }
    } else {
-      printf("tun: %s, remote->%s:%d, local->%s:%d, rc4->%d\n",
+      printf("tun: %s, local->%s:%d, remote->%s:%d, rc4->%d\n",
              conf->dbg_fname,
              conf->local_ipaddr, conf->local_port,
              conf->remote_ipaddr, conf->remote_port,
