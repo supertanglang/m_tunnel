@@ -7,3 +7,6 @@
 [submodule "vendor/m_dnscnt"]
 	path = vendor/m_dnscnt
 	url = https://github.com/lalawue/m_dnscnt
+[submodule "vendor/fastlz"]
+	path = vendor/fastlz
+	url = https://github.com/lalawue/FastLZ

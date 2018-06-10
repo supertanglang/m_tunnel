@@ -19,6 +19,7 @@ LIBS= -lc
 SRCS := $(shell find src -name "*.c")
 SRCS += $(shell find vendor/m_net/src -name "*.c")
 SRCS += $(shell find vendor/m_foundation/src -name "*.c")
+SRCS += vendor/fastlz/fastlz.c
 
 R_SRCS := $(SRCS)
 R_SRCS += $(shell find vendor/m_dnscnt/src -name "*.c")
@@ -26,6 +27,7 @@ R_SRCS += $(shell find vendor/m_dnscnt/src -name "*.c")
 DIRS := $(shell find src -type d)
 DIRS += $(shell find vendor/m_net/src -type d)
 DIRS += $(shell find vendor/m_foundation/src -type d)
+DIRS += vendor/fastlz
 
 R_DIRS := $(DIRS)
 R_DIRS += $(shell find vendor/m_dnscnt/src -type d)

@@ -43,6 +43,8 @@
 #include "tunnel_dns.h"
 #include "tunnel_conf.h"
 
+#include "fastlz.h"
+
 #include <assert.h>
 
 #define _err(...) _mlog("local", D_ERROR, __VA_ARGS__)
@@ -91,6 +93,7 @@ typedef struct {
    chann_t *tcpout;             /* tcp for forward */
    buf_t *bufout;               /* buf for forward */
    buf_t *buftmp;               /* buf for crypto */
+   buf_t *buf_flz;              /* buf for fastlz */
    lst_t *active_lst;           /* active chann list */
    lst_t *free_lst;             /* free chann list */
    tun_local_chann_t *channs[TUNNEL_CHANN_MAX_COUNT];
@@ -326,10 +329,29 @@ _local_chann_tcpin_cb_front(chann_msg_t *e) {
          uint8_t *data = buf_addr(ib,0);
          u16 data_len = buf_buffered(ib);
 
-         tunnel_cmd_data_len(data, 1, data_len);
-         tunnel_cmd_chann_id(data, 1, fc->chann_id);
-         tunnel_cmd_chann_magic(data, 1, fc->magic);
-         tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_DATA);
+         // try compress data with fastlz
+         const int fastlz = tun->conf.fastlz;
+         if (fastlz && data_len>(hlen+TUNNEL_CHANN_FASTLZ_MIN_LEN)) {
+            uint8_t *fbuf = buf_addr(tun->buf_flz, 0);
+            int flen = fastlz_compress_level(fastlz, &data[hlen], data_len-hlen, &fbuf[hlen]);
+
+            if (flen < data_len - hlen) {
+               data = fbuf;
+               data_len = hlen + flen;
+
+               tunnel_cmd_data_len(data, 1, data_len);
+               tunnel_cmd_chann_id(data, 1, fc->chann_id);
+               tunnel_cmd_chann_magic(data, 1, fc->magic);
+               tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_DATA_COMPRESSED);
+            }
+         }
+
+         if (data == buf_addr(ib,0)) {
+            tunnel_cmd_data_len(data, 1, data_len);
+            tunnel_cmd_chann_id(data, 1, fc->chann_id);
+            tunnel_cmd_chann_magic(data, 1, fc->magic);
+            tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_DATA_RAW);
+         }
 
          fc->data_mark += !!data_len;
          _front_send_remote_data(data, data_len);
@@ -457,7 +479,7 @@ _local_tcpout_cb_front(chann_msg_t *e) {
          }
 
          tunnel_cmd_check(ob, &tcmd);
-         if (tcmd.cmd<=TUNNEL_CMD_NONE || tcmd.cmd>TUNNEL_CMD_DATA) {
+         if (tcmd.cmd<=TUNNEL_CMD_NONE || tcmd.cmd>TUNNEL_CMD_DATA_COMPRESSED) {
             _err("(out) invalid cmd !\n");
             goto reset_buffer;
          }
@@ -474,7 +496,7 @@ _local_tcpout_cb_front(chann_msg_t *e) {
             tun_local_chann_t *fc = _local_chann_of_cmd(tun, &tcmd);
 
             if (fc) {
-               if (tcmd.cmd == TUNNEL_CMD_DATA)
+               if (tcmd.cmd == TUNNEL_CMD_DATA_RAW)
                {
                   if (fc->state == LOCAL_CHANN_STATE_CONNECTED) {
                      int data_len = tcmd.data_len - TUNNEL_CMD_CONST_HEADER_LEN;
@@ -600,7 +622,8 @@ tunnel_local_open(tunnel_config_t *conf) {
 
       tun->bufout = buf_create(TUNNEL_CHANN_BUF_SIZE);
       tun->buftmp = buf_create(TUNNEL_CHANN_BUF_SIZE + 32);
-      assert(tun->bufout && tun->buftmp);
+      tun->buf_flz = buf_create(TUNNEL_CHANN_BUF_SIZE);
+      assert(tun->bufout && tun->buftmp && tun->buf_flz);
       tun->tcpout = mnet_chann_open(CHANN_TYPE_STREAM);
       mnet_chann_set_bufsize(tun->tcpout, 131072);
       mnet_chann_set_cb(tun->tcpout, _local_tcpout_cb_front, tun);

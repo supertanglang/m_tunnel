@@ -24,8 +24,12 @@ typedef unsigned short u16;
 
 #define TUNNEL_CMD_CONST_DATA_LEN_OFFSET 2
 
-#define TUNNEL_CHANN_BUF_SIZE  64512  /* 63k */
-#define TUNNEL_CHANN_MAX_COUNT (2048) /* enough for normal web browse */
+#define TUNNEL_CHANN_BUF_SIZE  32768 /* 32Kb */
+#define TUNNEL_CHANN_DATA_SIZE 30720 /* for fastlz */
+
+#define TUNNEL_CHANN_FASTLZ_MIN_LEN 132 /* min 66 length for fastlz output */
+
+#define TUNNEL_CHANN_MAX_COUNT (3072) /* enough for normal web browse */
 
 typedef struct {
    u16 data_len;                /* data length */
@@ -73,11 +77,22 @@ enum {
       NOTE    : the RESPONSE only comes from remote, for local sync chann_id state
     */
 
-   TUNNEL_CMD_DATA,
+   TUNNEL_CMD_DATA_RAW,
    /* REQUEST : DATA_PAYLOAD
                 n bytes
-      
+
       NO RESPONSE
+
+      NOTE    : raw data no compression
+    */
+
+   TUNNEL_CMD_DATA_COMPRESSED,
+   /* REQUEST : DATA_PAYLOAD
+                n bytes
+
+      NO RESPONSE
+
+      NOTE    : data with compression
     */
 };
 

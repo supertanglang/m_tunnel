@@ -26,6 +26,8 @@
 #include "tunnel_dns.h"
 #include "tunnel_conf.h"
 
+#include "fastlz.h"
+
 #include <assert.h>
 
 #define _err(...) _mlog("remote", D_ERROR, __VA_ARGS__)
@@ -84,7 +86,8 @@ typedef struct {
    uint64_t key;
    tunnel_config_t conf;
    chann_t *tcpin;
-   buf_t *buftmp;               /* buf for crypto */
+   buf_t *buf_rc4;              /* buf for crypto */
+   buf_t *buf_flz;              /* buf for fastlz */
    lst_t *clients_lst;          /* acitve cilent */
    lst_t *leave_lst;            /* client to leave */
    tmr_timer_t *tm_cleanup;
@@ -249,16 +252,15 @@ _remote_send_front_data(tun_remote_client_t *c, unsigned char *buf, u16 buf_len)
    tun_remote_t *tun = _tun_remote();
 
    if (tun->conf.crypto_rc4) {
+      char *rbuf = (char*)buf_addr(tun->buf_rc4,0);
+      const int base = TUNNEL_CMD_CONST_DATA_LEN_OFFSET;
 
-      char *tbuf = (char*)buf_addr(tun->buftmp,0);
-      int base = TUNNEL_CMD_CONST_DATA_LEN_OFFSET;
-
-      u16 data_len = rc4_encrypt((char*)&buf[base], buf_len - base,
-                                 &tbuf[base], buf_len(tun->buftmp)-base,
+      u16 data_len = rc4_encrypt((char*)&buf[base], buf_len-base,
+                                 &rbuf[base], buf_len(tun->buf_rc4)-base,
                                  tun->key, tun->ti);
       if (data_len > 0) {
-         tunnel_cmd_data_len((u8*)tbuf, 1, data_len + base);
-         return mnet_chann_send(c->tcpin, tbuf, data_len + base);
+         tunnel_cmd_data_len((u8*)rbuf, 1, base + data_len);
+         return mnet_chann_send(c->tcpin, rbuf, base + data_len);
       }
    }
    else {
@@ -271,27 +273,48 @@ static int
 _remote_recv_front_data(tun_remote_client_t *c, buf_t *b) {
    tun_remote_t *tun = _tun_remote();
 
-   if (tun->conf.crypto_rc4) {
-      char *buf = (char*)buf_addr(b,0);
-      int buf_len = buf_buffered(b);
+   u8 *buf = (u8*)buf_addr(b,0);
+   int buf_len = buf_buffered(b);
 
-      char *tbuf = (char*)buf_addr(tun->buftmp,0);
-      int base = TUNNEL_CMD_CONST_DATA_LEN_OFFSET;      
+   if (tun->conf.crypto_rc4) {
+      u8 *rbuf = (u8*)buf_addr(tun->buf_rc4,0);
+      const int base = TUNNEL_CMD_CONST_DATA_LEN_OFFSET;
 
       u16 data_len = rc4_decrypt((const char*)&buf[base], buf_len-base,
-                                 (char*)tbuf, buf_len(tun->buftmp),
+                                 (char*)&rbuf[base], buf_len(tun->buf_rc4)-base,
                                  tun->key, tun->ti);
       if (data_len <= 0) {
          _err("invalid data_len !\n");
          return 0;
       }
 
-      memcpy(&buf[base], tbuf, data_len);
-      tunnel_cmd_data_len((u8*)buf, 1, data_len + base);
+      buf = rbuf;
+      buf_len = base + data_len;
 
-      buf_reset(b);
-      buf_forward_ptw(b, data_len + base);
+      tunnel_cmd_data_len(buf, 1, buf_len);
    }
+
+   if (tunnel_cmd_head_cmd(buf, 0, 0) == TUNNEL_CMD_DATA_COMPRESSED) {
+      const int hlen = TUNNEL_CMD_CONST_HEADER_LEN;
+
+      uint8_t *fbuf = (uint8_t*)buf_addr(tun->buf_flz, 0);
+      int flen = fastlz_decompress(&buf[hlen], buf_len - hlen, &fbuf[hlen], buf_len(tun->buf_flz)-hlen);
+
+      memcpy(fbuf, buf, hlen);
+
+      buf = fbuf;
+      buf_len = hlen + flen;
+
+      tunnel_cmd_data_len(buf, 1, buf_len);
+      tunnel_cmd_head_cmd(buf, 1, TUNNEL_CMD_DATA_RAW);
+   }
+
+   if (buf != (u8*)buf_addr(b,0)) {
+      memcpy(buf_addr(b,0), buf, buf_len);
+      buf_reset(b);
+      buf_forward_ptw(b, buf_len);
+   }
+
    return 1;
 }
 
@@ -420,7 +443,7 @@ _remote_tcpin_cb(chann_msg_t *e) {
 
          /* _verbose("%d, %d\n", tcmd.data_len, buf_buffered(ib)); */
          tunnel_cmd_check(ib, &tcmd);
-         if (tcmd.cmd<=TUNNEL_CMD_NONE || tcmd.cmd>TUNNEL_CMD_DATA) {
+         if (tcmd.cmd<=TUNNEL_CMD_NONE || tcmd.cmd>TUNNEL_CMD_DATA_COMPRESSED) {
             goto reset_buffer;
          }
 
@@ -433,7 +456,7 @@ _remote_tcpin_cb(chann_msg_t *e) {
          /* _info("get cmd %d\n", tcmd.cmd); */
          if (c->state == REMOTE_CLIENT_STATE_ACCEPT) {
 
-            if (tcmd.cmd == TUNNEL_CMD_DATA) {
+            if (tcmd.cmd == TUNNEL_CMD_DATA_RAW) {
                tun_remote_chann_t *rc = _remote_chann_of_id_magic(c, tcmd.chann_id, tcmd.magic);
 
                if (rc && rc->state==REMOTE_CHANN_STATE_CONNECTED) {
@@ -559,7 +582,7 @@ _remote_tcpout_cb(chann_msg_t *e) {
          tunnel_cmd_data_len(data, 1, data_len);
          tunnel_cmd_chann_id(data, 1, rc->chann_id);
          tunnel_cmd_chann_magic(data, 1, rc->magic);
-         tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_DATA);
+         tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_DATA_RAW);
 
          _remote_send_front_data(c, data, data_len);
 
@@ -609,8 +632,9 @@ tunnel_remote_open(tunnel_config_t *conf) {
          exit(1);
       }
 
-      tun->buftmp = buf_create(TUNNEL_CHANN_BUF_SIZE + 32);
-      assert(tun->buftmp);
+      tun->buf_rc4 = buf_create(TUNNEL_CHANN_BUF_SIZE + 32);
+      tun->buf_flz = buf_create(TUNNEL_CHANN_BUF_SIZE + 32);
+      assert(tun->buf_rc4 && tun->buf_flz);
 
       tun->running = 1;
 

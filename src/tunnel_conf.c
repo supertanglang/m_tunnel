@@ -102,17 +102,28 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
       goto fail;      
    }
 
-
-   ret = 1;
-
-
    // rc4 switch
    value = utils_args_string(ag, "-rc4");
-   if (value && strncmp(value, "no", 2)==0) {
+   if (value && strncmp(value, "0", 1)==0) {
       conf->crypto_rc4 = 0;
    } else {
       conf->crypto_rc4 = 1;
    }
+
+   // fastlz
+   value = utils_args_string(ag, "-fastlz");
+   if (value && strncmp(value, "0", 1)==0) {
+      conf->fastlz = 0;         /* disable */
+   } else if (value && strncmp(value, "1", 1)==0) {
+      conf->fastlz = 1;         /* level 1 */
+   } else {
+      conf->fastlz = 2;         /* level 2 */
+   }
+
+
+   ret = 1;
+
+
 
   fail:
    utils_args_close(ag);
@@ -126,8 +137,9 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
          { " -r \t remote ipport" },
          { " -u \t username" },
          { " -p \t password" },
-         { " -d \t debug output file, default stdout" },         
-         { " -rc4 \t disablle RC4, default 'no'" },
+         { " -d \t debug output file, default 'stdout'" },
+         { " -rc4 \t default '1', '0' to disable" },
+         { " -fastlz \t fastlz level, default '2', '0' to disable" },
          { NULL },
       };
       fprintf(stderr, "usage: %s [options]\nAvailable options are:\n", argv[0]);
@@ -135,11 +147,11 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
          fprintf(stderr, "%s\n", err[i].string);
       }
    } else {
-      printf("tun: %s, local->%s:%d, remote->%s:%d, rc4->%d\n",
+      printf("tun: %s, local->%s:%d, remote->%s:%d, rc4->%d, fastlz->%d\n",
              conf->dbg_fname,
              conf->local_ipaddr, conf->local_port,
              conf->remote_ipaddr, conf->remote_port,
-             conf->crypto_rc4);
+             conf->crypto_rc4, conf->fastlz);
    }
 
    return ret;
