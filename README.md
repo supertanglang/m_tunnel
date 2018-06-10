@@ -30,6 +30,7 @@ only support IPV4, under Linux/MacOS/FreeBSD/Windows, base on [m_net](https://gi
 - only one tcp connection between local and remote
 - authentication only once, speed up every request
 - concurrency DNS query in remote
+- transport compressed data with [FastLZ](https://github.com/ariya/FastLZ)
 - socks5 proxy interface 
 - support Windows
 
