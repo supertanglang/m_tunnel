@@ -93,13 +93,13 @@ typedef struct {
    tmr_timer_t *tm_cleanup;
 } tun_remote_t;
 
-static tun_remote_t _g_remote;
 
 static void _remote_tcpout_cb(chann_msg_t *e);
 static void _remote_tcpin_cb(chann_msg_t *e);
 static void _remote_chann_close(tun_remote_chann_t*, int line);
 
 static inline tun_remote_t* _tun_remote(void) {
+   static tun_remote_t _g_remote;
    return &_g_remote;
 }
 
@@ -183,7 +183,7 @@ _remote_chann_open(tun_remote_client_t *c, tunnel_cmd_t *tcmd, char *addr, int p
    } else {
       rc = (tun_remote_chann_t*)mm_malloc(sizeof(*rc));
    }
-   rc->bufout = buf_create(TUNNEL_CHANN_BUF_SIZE);
+   rc->bufout = buf_create(TUNNEL_CHANN_DATA_SIZE);
    assert(rc->bufout);
 
    rc->chann_id = tcmd->chann_id;
@@ -277,7 +277,7 @@ _remote_recv_front_data(tun_remote_client_t *c, buf_t *b) {
    int buf_len = buf_buffered(b);
 
    if (tun->conf.crypto_rc4) {
-      u8 *rbuf = (u8*)buf_addr(tun->buf_rc4,0);
+      u8 *rbuf = (u8*)buf_addr(tun->buf_rc4, 0);
       const int base = TUNNEL_CMD_CONST_DATA_LEN_OFFSET;
 
       u16 data_len = rc4_decrypt((const char*)&buf[base], buf_len-base,
@@ -298,7 +298,8 @@ _remote_recv_front_data(tun_remote_client_t *c, buf_t *b) {
       const int hlen = TUNNEL_CMD_CONST_HEADER_LEN;
 
       uint8_t *fbuf = (uint8_t*)buf_addr(tun->buf_flz, 0);
-      int flen = fastlz_decompress(&buf[hlen], buf_len - hlen, &fbuf[hlen], buf_len(tun->buf_flz)-hlen);
+      int flen = fastlz_decompress(&buf[hlen], buf_len-hlen,
+                                   &fbuf[hlen], buf_len(tun->buf_flz)-hlen);
 
       memcpy(fbuf, buf, hlen);
 
@@ -573,19 +574,37 @@ _remote_tcpout_cb(chann_msg_t *e) {
          if (ret <= 0) {
             return;
          }
-
-         u16 data_len = ret + hlen;
-         buf_forward_ptw(ob, data_len);
+         buf_forward_ptw(ob, ret + hlen);
 
          unsigned char *data = buf_addr(ob,0);
+         u16 data_len = buf_buffered(ob);
 
-         tunnel_cmd_data_len(data, 1, data_len);
-         tunnel_cmd_chann_id(data, 1, rc->chann_id);
-         tunnel_cmd_chann_magic(data, 1, rc->magic);
-         tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_DATA_RAW);
+         // try compress data with fastlz
+         tun_remote_t *tun = _tun_remote();
+         const int fastlz = tun->conf.fastlz;
+         if (fastlz && data_len>(hlen+TUNNEL_CHANN_FASTLZ_MIN_LEN)) {
+            uint8_t *fbuf = buf_addr(tun->buf_flz, 0);
+            int flen = fastlz_compress_level(fastlz, &data[hlen], data_len-hlen, &fbuf[hlen]);
+
+            if (flen < data_len-hlen) {
+               data = fbuf;
+               data_len = hlen + flen;
+
+               tunnel_cmd_data_len(data, 1, data_len);
+               tunnel_cmd_chann_id(data, 1, rc->chann_id);
+               tunnel_cmd_chann_magic(data, 1, rc->magic);
+               tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_DATA_COMPRESSED);
+            }
+         }
+
+         if (data == buf_addr(ob,0)) {
+            tunnel_cmd_data_len(data, 1, data_len);
+            tunnel_cmd_chann_id(data, 1, rc->chann_id);
+            tunnel_cmd_chann_magic(data, 1, rc->magic);
+            tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_DATA_RAW);
+         }
 
          _remote_send_front_data(c, data, data_len);
-
          buf_reset(ob);
       }
    }
@@ -632,8 +651,8 @@ tunnel_remote_open(tunnel_config_t *conf) {
          exit(1);
       }
 
-      tun->buf_rc4 = buf_create(TUNNEL_CHANN_BUF_SIZE + 32);
-      tun->buf_flz = buf_create(TUNNEL_CHANN_BUF_SIZE + 32);
+      tun->buf_rc4 = buf_create(TUNNEL_CHANN_BUF_SIZE);
+      tun->buf_flz = buf_create(TUNNEL_CHANN_BUF_SIZE);
       assert(tun->buf_rc4 && tun->buf_flz);
 
       tun->running = 1;

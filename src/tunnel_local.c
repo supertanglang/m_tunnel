@@ -92,7 +92,7 @@ typedef struct {
    chann_t *tcpin;              /* tcp for listen */
    chann_t *tcpout;             /* tcp for forward */
    buf_t *bufout;               /* buf for forward */
-   buf_t *buftmp;               /* buf for crypto */
+   buf_t *buf_rc4;              /* buf for crypto */
    buf_t *buf_flz;              /* buf for fastlz */
    lst_t *active_lst;           /* active chann list */
    lst_t *free_lst;             /* free chann list */
@@ -122,7 +122,7 @@ _local_chann_open(chann_t *r) {
       c->chann_id = tun->chann_idx;
       tun->chann_idx += 1;
    }
-   c->bufin = buf_create(TUNNEL_CHANN_BUF_SIZE);
+   c->bufin = buf_create(TUNNEL_CHANN_DATA_SIZE);
    assert(c->bufin);
 
    tun->channs[c->chann_id] = c;
@@ -204,16 +204,15 @@ _front_send_remote_data(unsigned char *buf, u16 buf_len) {
    tun_local_t *tun = _tun_local();
 
    if (tun->conf.crypto_rc4) {
+      u8 *rbuf = (u8*)buf_addr(tun->buf_rc4, 0);
+      const int base = TUNNEL_CMD_CONST_DATA_LEN_OFFSET;
 
-      char *tbuf = (char*)buf_addr(tun->buftmp,0);
-      int base = TUNNEL_CMD_CONST_DATA_LEN_OFFSET;
-
-      u16 data_len = rc4_encrypt((char*)&buf[base], buf_len - base,
-                                 &tbuf[base], buf_len(tun->buftmp)-base,
+      u16 data_len = rc4_encrypt((char*)&buf[base], buf_len-base,
+                                 (char*)&rbuf[base], buf_len(tun->buf_rc4)-base,
                                  tun->key, tun->ti);
       if (data_len > 0) {
-         tunnel_cmd_data_len((u8*)tbuf, 1, data_len + base);
-         return mnet_chann_send(tun->tcpout, tbuf, data_len + base);
+         tunnel_cmd_data_len(rbuf, 1, base + data_len);
+         return mnet_chann_send(tun->tcpout, rbuf, base + data_len);
       }
    }
    else {
@@ -226,26 +225,49 @@ static int
 _front_recv_remote_data(buf_t *b) {
    tun_local_t *tun = _tun_local();
 
+   u8 *buf = (u8*)buf_addr(b,0);
+   int buf_len = buf_buffered(b);
+
    if (tun->conf.crypto_rc4) {
-      char *buf = (char*)buf_addr(b,0);
-      int buf_len = buf_buffered(b);
+      u8 *rbuf = (u8*)buf_addr(tun->buf_rc4, 0);
+      const int base = TUNNEL_CMD_CONST_DATA_LEN_OFFSET;
 
-      char *tbuf = (char*)buf_addr(tun->buftmp,0);
-      int base = TUNNEL_CMD_CONST_DATA_LEN_OFFSET;
-
-      u16 data_len = rc4_decrypt(&buf[base], buf_len-base,
-                                 tbuf, buf_len(tun->buftmp), tun->key, tun->ti);
+      u16 data_len = rc4_decrypt((char*)&buf[base], buf_len-base,
+                                 (char*)&rbuf[base], buf_len(tun->buf_rc4)-base,
+                                 tun->key, tun->ti);
       if (data_len <= 0) {
          _err("invalid data_len !\n");
          return 0;
       }
 
-      memcpy(&buf[base], tbuf, data_len);
-      tunnel_cmd_data_len((u8*)buf, 1, data_len + base);
+      buf = rbuf;
+      buf_len = base + data_len;
 
-      buf_reset(b);
-      buf_forward_ptw(b, data_len + base);
+      tunnel_cmd_data_len(buf, 1, buf_len);
    }
+
+   if (tunnel_cmd_head_cmd(buf, 0, 0) == TUNNEL_CMD_DATA_COMPRESSED) {
+      const int hlen = TUNNEL_CMD_CONST_HEADER_LEN;
+
+      uint8_t *fbuf = (uint8_t*)buf_addr(tun->buf_flz, 0);
+      int flen = fastlz_decompress(&buf[hlen], buf_len-hlen,
+                                   &fbuf[hlen], buf_len(tun->buf_flz)-hlen);
+
+      memcpy(fbuf, buf, hlen);
+
+      buf = fbuf;
+      buf_len = hlen + flen;
+
+      tunnel_cmd_data_len(buf, 1, buf_len);
+      tunnel_cmd_head_cmd(buf, 1, TUNNEL_CMD_DATA_RAW);
+   }
+
+   if (buf != (u8*)buf_addr(b,0)) {
+      memcpy(buf_addr(b,0), buf, buf_len);
+      buf_reset(b);
+      buf_forward_ptw(b, buf_len);
+   }
+
    return 1;
 }
 
@@ -335,7 +357,7 @@ _local_chann_tcpin_cb_front(chann_msg_t *e) {
             uint8_t *fbuf = buf_addr(tun->buf_flz, 0);
             int flen = fastlz_compress_level(fastlz, &data[hlen], data_len-hlen, &fbuf[hlen]);
 
-            if (flen < data_len - hlen) {
+            if (flen < data_len-hlen) {
                data = fbuf;
                data_len = hlen + flen;
 
@@ -621,9 +643,11 @@ tunnel_local_open(tunnel_config_t *conf) {
       mnet_chann_listen(tun->tcpin, conf->local_ipaddr, conf->local_port, 1);
 
       tun->bufout = buf_create(TUNNEL_CHANN_BUF_SIZE);
-      tun->buftmp = buf_create(TUNNEL_CHANN_BUF_SIZE + 32);
+      tun->buf_rc4 = buf_create(TUNNEL_CHANN_BUF_SIZE);
       tun->buf_flz = buf_create(TUNNEL_CHANN_BUF_SIZE);
-      assert(tun->bufout && tun->buftmp && tun->buf_flz);
+
+      assert(tun->bufout && tun->buf_rc4 && tun->buf_flz);
+
       tun->tcpout = mnet_chann_open(CHANN_TYPE_STREAM);
       mnet_chann_set_bufsize(tun->tcpout, 131072);
       mnet_chann_set_cb(tun->tcpout, _local_tcpout_cb_front, tun);
