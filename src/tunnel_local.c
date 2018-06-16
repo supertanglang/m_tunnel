@@ -96,6 +96,8 @@ typedef struct {
    buf_t *buf_flz;              /* buf for fastlz */
    lst_t *active_lst;           /* active chann list */
    lst_t *free_lst;             /* free chann list */
+   uint64_t rcv_comp;           /* bytes compressed */
+   uint64_t snd_comp;           /* bytes compressed */
    tun_local_chann_t *channs[TUNNEL_CHANN_MAX_COUNT];
 } tun_local_t;
 
@@ -254,6 +256,7 @@ _front_recv_remote_data(buf_t *b) {
                                    &fbuf[hlen], buf_len(tun->buf_flz)-hlen);
 
       memcpy(fbuf, buf, hlen);
+      tun->rcv_comp += (flen + hlen - buf_len);
 
       buf = fbuf;
       buf_len = hlen + flen;
@@ -358,6 +361,8 @@ _local_chann_tcpin_cb_front(chann_msg_t *e) {
             int flen = fastlz_compress_level(fastlz, &data[hlen], data_len-hlen, &fbuf[hlen]);
 
             if (flen < data_len-hlen) {
+               tun->snd_comp += (data_len - hlen - flen);
+
                data = fbuf;
                data_len = hlen + flen;
 
@@ -701,11 +706,15 @@ _local_tmr_callback(tmr_timer_t *tm, void *opaque) {
       }
    }
 
+   uint64_t rcv_all = mnet_chann_bytes(tun->tcpout, 0);
+   uint64_t snd_all = mnet_chann_bytes(tun->tcpout, 1);
+
    mm_report(1);
-   _info("channs count:%d, rcv:%.3fMb, snd:%.3fMb\n",
+   _info("channs count:%d, rcv:%.3fMb, snd:%.3fMb, comp:%.2f\n",
          mnet_report(0),
          ((double)mnet_chann_bytes(tun->tcpout, 0))/1048576.0,
-         ((double)mnet_chann_bytes(tun->tcpout, 1))/1048576.0);
+         ((double)mnet_chann_bytes(tun->tcpout, 1))/1048576.0,
+         ((double)(tun->rcv_comp + tun->snd_comp)) / (double)(rcv_all + snd_all));
 }
 
 static inline time_t
