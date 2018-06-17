@@ -42,8 +42,7 @@
 #include "tunnel_cmd.h"
 #include "tunnel_dns.h"
 #include "tunnel_conf.h"
-
-#include "fastlz.h"
+#include "tunnel_compress.h"
 
 #include <assert.h>
 
@@ -196,7 +195,6 @@ _local_cmd_send_connected(tun_local_chann_t *c, uint8_t *addr, int port) {
       ((port & 0xff00)>>8), (port&0xff)
    };
 
-   /* _print_hex(es, 10); */
    mnet_chann_send(c->tcpin, es, 10);
    c->state = LOCAL_CHANN_STATE_CONNECTED;
 }
@@ -252,8 +250,8 @@ _front_recv_remote_data(buf_t *b) {
       const int hlen = TUNNEL_CMD_CONST_HEADER_LEN;
 
       uint8_t *fbuf = (uint8_t*)buf_addr(tun->buf_flz, 0);
-      int flen = fastlz_decompress(&buf[hlen], buf_len-hlen,
-                                   &fbuf[hlen], buf_len(tun->buf_flz)-hlen);
+      int flen = tun_decompress(&buf[hlen], buf_len-hlen,
+                                &fbuf[hlen], buf_len(tun->buf_flz)-hlen);
 
       memcpy(fbuf, buf, hlen);
       tun->rcv_comp += (flen + hlen - buf_len);
@@ -358,7 +356,7 @@ _local_chann_tcpin_cb_front(chann_msg_t *e) {
          const int fastlz = tun->conf.fastlz;
          if (fastlz && data_len>(hlen+TUNNEL_CHANN_FASTLZ_MIN_LEN)) {
             uint8_t *fbuf = buf_addr(tun->buf_flz, 0);
-            int flen = fastlz_compress_level(fastlz, &data[hlen], data_len-hlen, &fbuf[hlen]);
+            int flen = tun_compress(fastlz, &data[hlen], data_len-hlen, &fbuf[hlen]);
 
             if (flen < data_len-hlen) {
                tun->snd_comp += (data_len - hlen - flen);

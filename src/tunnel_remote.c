@@ -25,8 +25,7 @@
 #include "tunnel_cmd.h"
 #include "tunnel_dns.h"
 #include "tunnel_conf.h"
-
-#include "fastlz.h"
+#include "tunnel_compress.h"
 
 #include <assert.h>
 
@@ -298,8 +297,8 @@ _remote_recv_front_data(tun_remote_client_t *c, buf_t *b) {
       const int hlen = TUNNEL_CMD_CONST_HEADER_LEN;
 
       uint8_t *fbuf = (uint8_t*)buf_addr(tun->buf_flz, 0);
-      int flen = fastlz_decompress(&buf[hlen], buf_len-hlen,
-                                   &fbuf[hlen], buf_len(tun->buf_flz)-hlen);
+      int flen = tun_decompress(&buf[hlen], buf_len-hlen,
+                                &fbuf[hlen], buf_len(tun->buf_flz)-hlen);
 
       memcpy(fbuf, buf, hlen);
 
@@ -584,7 +583,7 @@ _remote_tcpout_cb(chann_msg_t *e) {
          const int fastlz = tun->conf.fastlz;
          if (fastlz && data_len>(hlen+TUNNEL_CHANN_FASTLZ_MIN_LEN)) {
             uint8_t *fbuf = buf_addr(tun->buf_flz, 0);
-            int flen = fastlz_compress_level(fastlz, &data[hlen], data_len-hlen, &fbuf[hlen]);
+            int flen = tun_compress(fastlz, &data[hlen], data_len-hlen, &fbuf[hlen]);
 
             if (flen < data_len-hlen) {
                data = fbuf;
