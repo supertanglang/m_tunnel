@@ -8,14 +8,16 @@
 #ifndef TUNNEL_CONF_H
 #define TUNNEL_CONF_H
 
+#include "m_sha256.h"
+
 typedef struct {
    char dbg_fname[32];
    int local_port;
    int remote_port;
    char local_ipaddr[16];
    char remote_ipaddr[16];
-   char username[32];
-   char password[32];
+   char username[SHA256_HASH_BYTES];
+   char password[SHA256_HASH_BYTES];
    int crypto_rc4;              /* 0 to disble, default enable */
    int fastlz;                  /* 0 to disable, default 2 */
 } tunnel_config_t;
@@ -24,8 +26,17 @@ static inline int _min_of(int a, int b) {
    return a < b ? a : b;
 }
 
+int tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]);
+
+/* helper
+ */
+
+uint64_t _init_hash_key(tunnel_config_t *conf);
+
+void _sha256_salt(void *data, void *salt, void *hash);
+
 void _binary_addr(char *addr, int addr_len, unsigned char *e, int elen);
 
-int tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]);
+void _print_hex(unsigned char *buf, int len);
 
 #endif

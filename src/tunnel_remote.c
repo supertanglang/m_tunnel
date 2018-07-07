@@ -14,9 +14,11 @@
 
 #include "m_mem.h"
 #include "m_list.h"
-#include "m_debug.h"
 #include "m_rc4.h"
 #include "m_timer.h"
+#include "m_cprng.h"
+#include "m_sha256.h"
+#include "utils_debug.h"
 
 #include "mnet_core.h"
 #include "plat_time.h"
@@ -29,9 +31,9 @@
 
 #include <assert.h>
 
-#define _err(...) _mlog("remote", D_ERROR, __VA_ARGS__)
-#define _info(...) _mlog("remote", D_INFO, __VA_ARGS__)
-#define _verbose(...) _mlog("remote", D_VERBOSE, __VA_ARGS__)
+#define _err(...) _mlog(0, "remote", D_ERROR, __VA_ARGS__)
+#define _info(...) _mlog(0, "remote", D_INFO, __VA_ARGS__)
+#define _verbose(...) _mlog(0, "remote", D_VERBOSE, __VA_ARGS__)
 
 #ifdef TEST_TUNNEL_REMOTE
 
@@ -74,8 +76,9 @@ typedef struct {
    buf_t *bufin;
    lst_t *active_lst;
    lst_t *free_lst;
-   lst_t *want_lst;             /* chann_id/magic wanted */
-   lst_node_t *node;            /* node in clients_lst */
+   lst_t *want_lst;              /* chann_id/magic wanted */
+   lst_node_t *node;             /* node in clients_lst */
+   unsigned char crypt_salt[SHA256_HASH_BYTES]; /* salt for client  */
    tun_remote_chann_t *channs[TUNNEL_CHANN_MAX_COUNT];
 } tun_remote_client_t;
 
@@ -130,6 +133,7 @@ _remote_client_create(chann_t *n) {
    c->node = lst_pushl(tun->clients_lst, c);
    mnet_chann_set_bufsize(n, 262144);
    mnet_chann_set_cb(n, _remote_tcpin_cb, c);
+   cprng_random(c->crypt_salt, 32);
    return c;
 }
 
@@ -517,16 +521,22 @@ _remote_tcpin_cb(chann_msg_t *e) {
             
                if (auth_type == 1) {
                   char *username = (char*)&tcmd.payload[1];
-                  char *passwd = (char*)&tcmd.payload[17];
+                  char *passwd = (char*)&tcmd.payload[33];
 
                   tunnel_cmd_data_len(data, 1, data_len);
                   tunnel_cmd_chann_id(data, 1, 0);
                   tunnel_cmd_chann_magic(data, 1, 0);
                   tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_AUTH);
 
-                  tun_remote_t *tun = _tun_remote();
-                  if (memcmp(tun->conf.username, username, 16)==0 &&
-                      memcmp(tun->conf.password, passwd, 16)==0)
+                  unsigned char uname_hash[SHA256_HASH_BYTES];
+                  unsigned char passw_hash[SHA256_HASH_BYTES];
+
+                  tun_remote_t *tun = _tun_remote();                  
+                  _sha256_salt(tun->conf.username, c->crypt_salt, uname_hash);
+                  _sha256_salt(tun->conf.password, c->crypt_salt, passw_hash);                  
+
+                  if (memcmp(uname_hash, username, SHA256_HASH_BYTES)==0 &&
+                      memcmp(passw_hash, passwd, SHA256_HASH_BYTES)==0)
                   {
                      c->state = REMOTE_CLIENT_STATE_ACCEPT;
                      data[data_len - 1] = 1;
@@ -627,7 +637,8 @@ _remote_listen_cb(chann_msg_t *e) {
    if (e->event == CHANN_EVENT_ACCEPT) {
       tun_remote_t *tun = _tun_remote();
       if (lst_count(tun->clients_lst) < TUNNEL_REMOTE_MAX_CLIENT) {
-         _remote_client_create(e->r);
+         tun_remote_client_t *rc = _remote_client_create(e->r);
+         mnet_chann_send(e->r, rc->crypt_salt, 32);
       } else {
          mnet_chann_close(e->r);
       }
@@ -751,9 +762,10 @@ main(int argc, char *argv[]) {
       return 0;
    }
 
-   debug_open(conf.dbg_fname);
-   debug_set_option(D_OPT_FILE);
-   debug_set_level(D_INFO);
+   debug_init(1);
+   debug_open(0, conf.dbg_fname);
+   debug_set_option(0, D_OPT_FILE);
+   debug_set_level(0, D_VERBOSE);
 
    mnet_init();
    dns_init(_remote_dns_cb);
@@ -763,7 +775,7 @@ main(int argc, char *argv[]) {
       tmr_t *tmr = tmr_create_lst();
 
       _remote_update_ti();
-      tun->key = rc4_hash_key(conf.password, 16);
+      tun->key = _init_hash_key(&conf);
 
       tun->tm_cleanup = tmr_add(tmr, tun->ti, 4, 1, tun, _remote_tmr_callback);
       tmr_add(tmr, tun->ti, 60, 1, tun, _remote_tmr_callback);
@@ -787,7 +799,8 @@ main(int argc, char *argv[]) {
 
    dns_fini();
    mnet_fini();
-   debug_close();
+   debug_close(0);
+   debug_fini();
    return 0;
 }
 

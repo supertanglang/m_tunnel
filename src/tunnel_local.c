@@ -33,9 +33,10 @@
 #include "m_mem.h"
 #include "m_buf.h"
 #include "m_list.h"
-#include "m_debug.h"
 #include "m_rc4.h"
 #include "m_timer.h"
+#include "m_sha256.h"
+#include "utils_debug.h"
 
 #include "mnet_core.h"
 
@@ -46,9 +47,9 @@
 
 #include <assert.h>
 
-#define _err(...) _mlog("local", D_ERROR, __VA_ARGS__)
-#define _info(...) _mlog("local", D_INFO, __VA_ARGS__)
-#define _verbose(...) _mlog("local", D_VERBOSE, __VA_ARGS__)
+#define _err(...) _mlog(0, "local", D_ERROR, __VA_ARGS__)
+#define _info(...) _mlog(0, "local", D_INFO, __VA_ARGS__)
+#define _verbose(...) _mlog(0, "local", D_VERBOSE, __VA_ARGS__)
 
 #ifdef TEST_TUNNEL_LOCAL
 
@@ -88,15 +89,16 @@ typedef struct {
    u16 magic_code;
    local_front_state_t state;
    tunnel_config_t conf;
-   chann_t *tcpin;              /* tcp for listen */
-   chann_t *tcpout;             /* tcp for forward */
-   buf_t *bufout;               /* buf for forward */
-   buf_t *buf_rc4;              /* buf for crypto */
-   buf_t *buf_flz;              /* buf for fastlz */
-   lst_t *active_lst;           /* active chann list */
-   lst_t *free_lst;             /* free chann list */
-   uint64_t rcv_comp;           /* bytes compressed */
-   uint64_t snd_comp;           /* bytes compressed */
+   unsigned char crypt_salt[SHA256_HASH_BYTES]; /* salt from server */
+   chann_t *tcpin;               /* tcp for listen */
+   chann_t *tcpout;              /* tcp for forward */
+   buf_t *bufout;                /* buf for forward */
+   buf_t *buf_rc4;               /* buf for crypto */
+   buf_t *buf_flz;               /* buf for fastlz */
+   lst_t *active_lst;            /* active chann list */
+   lst_t *free_lst;              /* free chann list */
+   uint64_t rcv_comp;            /* bytes compressed */
+   uint64_t snd_comp;            /* bytes compressed */
    tun_local_chann_t *channs[TUNNEL_CHANN_MAX_COUNT];
 } tun_local_t;
 
@@ -579,27 +581,35 @@ _local_tcpout_cb_front(chann_msg_t *e) {
       }
    }
    else if (e->event == CHANN_EVENT_CONNECTED) {
+      
+      /* get salt from server */
+      int ret = 0;
+      do {
+         mtime_sleep(1);
+         ret += mnet_chann_recv(e->n, tun->crypt_salt, SHA256_HASH_BYTES - ret);
+         //_print_hex(tun->crypt_salt, 32);
+      } while (ret < SHA256_HASH_BYTES);
+
+      
+      /* prepare auth data */
       unsigned char data[64] = {0};
       memset(data, 0, sizeof(data));
 
       int head_len = TUNNEL_CMD_CONST_HEADER_LEN;
-      u16 data_len = head_len + 1 + 16 + 16;
+      u16 data_len = head_len + 1 + 2 * SHA256_HASH_BYTES;
 
       tunnel_cmd_data_len(data, 1, data_len);
       tunnel_cmd_chann_id(data, 1, 0);
       tunnel_cmd_chann_magic(data, 1, 0);
       tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_AUTH);
 
-      /* auth type */
-      data[head_len] = 1;
+      data[head_len] = 1;       /* auth type */
 
-      /* user name */
-      int uname_base = head_len + 1;
-      memcpy((char*)&data[uname_base], tun->conf.username, 16);
+      int uname_base = head_len + 1; /* user name */
+      _sha256_salt(tun->conf.username, tun->crypt_salt, &data[uname_base]);
 
-      /* user password */
-      int passw_base = uname_base + 16;
-      memcpy((char*)&data[passw_base], tun->conf.password, 16);
+      int passw_base = uname_base + SHA256_HASH_BYTES; /* user password */
+      _sha256_salt(tun->conf.password, tun->crypt_salt, &data[passw_base]);
 
       _front_send_remote_data(data, data_len);
 
@@ -729,9 +739,10 @@ main(int argc, char *argv[]) {
       return 0;
    }
 
-   debug_open(conf.dbg_fname);
-   debug_set_option(D_OPT_FILE);
-   debug_set_level(D_INFO);
+   debug_init(1);
+   debug_open(0, conf.dbg_fname);
+   debug_set_option(0, D_OPT_FILE);
+   debug_set_level(0, D_VERBOSE);
 
    mnet_init();
 
@@ -742,7 +753,7 @@ main(int argc, char *argv[]) {
       _local_update_ti();
       tmr_add(tmr, tun->ti, 30, 1, tun, _local_tmr_callback);
 
-      tun->key = rc4_hash_key(conf.password, 16);
+      tun->key = _init_hash_key(&conf);
 
       for (int i=0;;i++) {
 
@@ -761,7 +772,8 @@ main(int argc, char *argv[]) {
    }
 
    mnet_fini();
-   debug_close();
+   debug_close(0);
+   debug_fini();
    return 0;
 }
 

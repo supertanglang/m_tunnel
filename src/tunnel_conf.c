@@ -11,33 +11,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "m_debug.h"
-#include "m_md5.h"
-
+#include "utils_debug.h"
 #include "utils_args.h"
 #include "utils_str.h"
 
+#include "m_sha256.h"
+#include "m_rc4.h"
+
 #include "mnet_core.h"
 #include "tunnel_conf.h"
-
-static int
-_get_md5_value(const char *value, char *result) {
-   if (value) {
-      char input[64] = { 0 };
-      int min = _min_of(strlen(value), 32);
-      int i = sprintf(input, "%s", "9$T%z4Ph");
-      strncpy(&input[i], value, min);
-      i += min;
-      {
-         MD5_CTX ctx;
-         MD5_Init(&ctx);
-         MD5_Update(&ctx, input, i);
-         MD5_Final((unsigned char*)result, &ctx);
-      }
-      return 1;
-   }
-   return 0;
-}
 
 int
 tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
@@ -87,7 +69,7 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
    // username
    value = utils_args_string(ag, "-u");
    if (value) {
-      _get_md5_value(value, conf->username);
+      strncpy(conf->username, value, SHA256_HASH_BYTES);
    } else {
       fprintf(stderr, "tun: fail to parse username !\n");
       goto fail;      
@@ -96,7 +78,7 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
    // password
    value = utils_args_string(ag, "-p");
    if (value) {
-      _get_md5_value(value, conf->password);
+      strncpy(conf->password, value, SHA256_HASH_BYTES);
    } else {
       fprintf(stderr, "tun: fail to parse password !\n");
       goto fail;      
@@ -135,8 +117,8 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
       struct s_error err[] = {
          { " -l \t local ipport, '127.0.0.1:1234'" },
          { " -r \t remote ipport" },
-         { " -u \t username" },
-         { " -p \t password" },
+         { " -u \t username (256bits)" },
+         { " -p \t password (256bits)" },
          { " -d \t debug output file, default 'stdout'" },
          { " -rc4 \t default '1', '0' to disable" },
          { " -fastlz \t fastlz level, default '2', '0' to disable" },
@@ -158,6 +140,26 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
 }
 
 
+/* helper
+ */
+
+uint64_t
+_init_hash_key(tunnel_config_t *conf) {
+   unsigned char buf[SHA256_HASH_BYTES + SHA256_HASH_BYTES];
+   memcpy(buf, conf->username, SHA256_HASH_BYTES);
+   memcpy(&buf[SHA256_HASH_BYTES], conf->password, SHA256_HASH_BYTES);
+   return rc4_hash_key((const char*)buf, 2*SHA256_HASH_BYTES);
+}
+
+/* assume all SHA256_HASH_BYTES */
+void
+_sha256_salt(void *data, void *salt, void *hash) {
+   unsigned char buf[SHA256_HASH_BYTES + SHA256_HASH_BYTES];
+   memcpy(buf, data, SHA256_HASH_BYTES);
+   memcpy(&buf[SHA256_HASH_BYTES], salt, SHA256_HASH_BYTES);
+   sha256_once((const void*)buf, (size_t)(2*SHA256_HASH_BYTES), hash);
+}
+
 void
 _binary_addr(char *addr, int addr_len, unsigned char *e, int elen) {
    str_t *head = str_clone_cstr(addr, addr_len);
@@ -167,4 +169,15 @@ _binary_addr(char *addr, int addr_len, unsigned char *e, int elen) {
       e[i++] = atoi(str_cstr(s));
    }
    str_destroy(head);
+}
+
+void
+_print_hex(unsigned char *buf, int len) {
+   for (int i=0; i<len; i++) {
+      if (i && i%15==0) {
+         printf("\n");
+      }
+      printf("%02x ", buf[i]);      
+   }
+   printf("\n");
 }
