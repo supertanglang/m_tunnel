@@ -15,6 +15,7 @@
 #include "m_mem.h"
 #include "m_list.h"
 #include "m_rc4.h"
+#include "m_chacha20.h"
 #include "m_timer.h"
 #include "m_cprng.h"
 #include "m_sha256.h"
@@ -78,6 +79,8 @@ typedef struct {
    lst_t *free_lst;
    lst_t *want_lst;              /* chann_id/magic wanted */
    lst_node_t *node;             /* node in clients_lst */
+   chacha20_ctx_t enc;
+   chacha20_ctx_t dec;
    unsigned char crypt_salt[SHA256_HASH_BYTES]; /* salt for client  */
    tun_remote_chann_t *channs[TUNNEL_CHANN_MAX_COUNT];
 } tun_remote_client_t;
@@ -134,6 +137,14 @@ _remote_client_create(chann_t *n) {
    mnet_chann_set_bufsize(n, 262144);
    mnet_chann_set_cb(n, _remote_tcpin_cb, c);
    cprng_random(c->crypt_salt, 32);
+   /* chacha20 */
+   chacha20_ctx_init(&c->enc);
+   chacha20_key_setup(&c->enc, "01234567890123456789012345678901", 32);
+   chacha20_iv_setup(&c->enc, "01234567", 8);
+
+   chacha20_ctx_init(&c->dec);
+   chacha20_key_setup(&c->dec, "01234567890123456789012345678901", 32);
+   chacha20_iv_setup(&c->dec, "01234567", 8);
    return c;
 }
 
@@ -255,16 +266,13 @@ _remote_send_front_data(tun_remote_client_t *c, unsigned char *buf, u16 buf_len)
    tun_remote_t *tun = _tun_remote();
 
    if (tun->conf.crypto_rc4) {
-      char *rbuf = (char*)buf_addr(tun->buf_rc4,0);
+      u8* rbuf = (u8*)buf_addr(tun->buf_rc4,0);
       const int base = TUNNEL_CMD_CONST_DATA_LEN_OFFSET;
 
-      u16 data_len = rc4_encrypt((char*)&buf[base], buf_len-base,
-                                 &rbuf[base], buf_len(tun->buf_rc4)-base,
-                                 tun->key, tun->ti);
-      if (data_len > 0) {
-         tunnel_cmd_data_len((u8*)rbuf, 1, base + data_len);
-         return mnet_chann_send(c->tcpin, rbuf, base + data_len);
-      }
+      chacha20_xor(&c->enc, &buf[base], &rbuf[base], buf_len - base);
+      
+      tunnel_cmd_data_len(rbuf, 1, buf_len);
+      return mnet_chann_send(c->tcpin, rbuf, buf_len);
    }
    else {
       return mnet_chann_send(c->tcpin, buf, buf_len);      
@@ -283,17 +291,9 @@ _remote_recv_front_data(tun_remote_client_t *c, buf_t *b) {
       u8 *rbuf = (u8*)buf_addr(tun->buf_rc4, 0);
       const int base = TUNNEL_CMD_CONST_DATA_LEN_OFFSET;
 
-      u16 data_len = rc4_decrypt((const char*)&buf[base], buf_len-base,
-                                 (char*)&rbuf[base], buf_len(tun->buf_rc4)-base,
-                                 tun->key, tun->ti);
-      if (data_len <= 0) {
-         _err("invalid data_len !\n");
-         return 0;
-      }
-
+      chacha20_xor(&c->dec, &buf[base], &rbuf[base], buf_len - base);
+      
       buf = rbuf;
-      buf_len = base + data_len;
-
       tunnel_cmd_data_len(buf, 1, buf_len);
    }
 
@@ -765,7 +765,7 @@ main(int argc, char *argv[]) {
    debug_init(1);
    debug_open(0, conf.dbg_fname);
    debug_set_option(0, D_OPT_FILE);
-   debug_set_level(0, D_VERBOSE);
+   debug_set_level(0, D_INFO);
 
    mnet_init();
    dns_init(_remote_dns_cb);

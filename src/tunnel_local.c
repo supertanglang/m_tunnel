@@ -34,6 +34,7 @@
 #include "m_buf.h"
 #include "m_list.h"
 #include "m_rc4.h"
+#include "m_chacha20.h"
 #include "m_timer.h"
 #include "m_sha256.h"
 #include "utils_debug.h"
@@ -99,6 +100,8 @@ typedef struct {
    lst_t *free_lst;              /* free chann list */
    uint64_t rcv_comp;            /* bytes compressed */
    uint64_t snd_comp;            /* bytes compressed */
+   chacha20_ctx_t enc;
+   chacha20_ctx_t dec;
    tun_local_chann_t *channs[TUNNEL_CHANN_MAX_COUNT];
 } tun_local_t;
 
@@ -209,13 +212,10 @@ _front_send_remote_data(unsigned char *buf, u16 buf_len) {
       u8 *rbuf = (u8*)buf_addr(tun->buf_rc4, 0);
       const int base = TUNNEL_CMD_CONST_DATA_LEN_OFFSET;
 
-      u16 data_len = rc4_encrypt((char*)&buf[base], buf_len-base,
-                                 (char*)&rbuf[base], buf_len(tun->buf_rc4)-base,
-                                 tun->key, tun->ti);
-      if (data_len > 0) {
-         tunnel_cmd_data_len(rbuf, 1, base + data_len);
-         return mnet_chann_send(tun->tcpout, rbuf, base + data_len);
-      }
+      chacha20_xor(&tun->enc, &buf[base], &rbuf[base], buf_len - base);
+      
+      tunnel_cmd_data_len(rbuf, 1, buf_len);
+      return mnet_chann_send(tun->tcpout, rbuf, buf_len);
    }
    else {
       return mnet_chann_send(tun->tcpout, buf, buf_len);
@@ -234,17 +234,9 @@ _front_recv_remote_data(buf_t *b) {
       u8 *rbuf = (u8*)buf_addr(tun->buf_rc4, 0);
       const int base = TUNNEL_CMD_CONST_DATA_LEN_OFFSET;
 
-      u16 data_len = rc4_decrypt((char*)&buf[base], buf_len-base,
-                                 (char*)&rbuf[base], buf_len(tun->buf_rc4)-base,
-                                 tun->key, tun->ti);
-      if (data_len <= 0) {
-         _err("invalid data_len !\n");
-         return 0;
-      }
-
+      chacha20_xor(&tun->dec, &buf[base], &rbuf[base], buf_len - base);
+      
       buf = rbuf;
-      buf_len = base + data_len;
-
       tunnel_cmd_data_len(buf, 1, buf_len);
    }
 
@@ -742,7 +734,7 @@ main(int argc, char *argv[]) {
    debug_init(1);
    debug_open(0, conf.dbg_fname);
    debug_set_option(0, D_OPT_FILE);
-   debug_set_level(0, D_VERBOSE);
+   debug_set_level(0, D_INFO);
 
    mnet_init();
 
@@ -754,6 +746,16 @@ main(int argc, char *argv[]) {
       tmr_add(tmr, tun->ti, 30, 1, tun, _local_tmr_callback);
 
       tun->key = _init_hash_key(&conf);
+
+      /* chacha20 */
+      chacha20_ctx_init(&tun->enc);
+      chacha20_key_setup(&tun->enc, "01234567890123456789012345678901", 32);
+      chacha20_iv_setup(&tun->enc, "01234567", 8);
+
+      chacha20_ctx_init(&tun->dec);
+      chacha20_key_setup(&tun->dec, "01234567890123456789012345678901", 32);
+      chacha20_iv_setup(&tun->dec, "01234567", 8);
+      
 
       for (int i=0;;i++) {
 
