@@ -14,11 +14,10 @@
 
 #include "m_mem.h"
 #include "m_list.h"
-#include "m_rc4.h"
-#include "m_chacha20.h"
 #include "m_timer.h"
 #include "m_cprng.h"
 #include "m_sha256.h"
+#include "m_chacha20.h"
 #include "utils_debug.h"
 
 #include "mnet_core.h"
@@ -88,11 +87,10 @@ typedef struct {
 typedef struct {
    int running;
    time_t ti;
-   uint64_t key;
    tunnel_config_t conf;
    chann_t *tcpin;
-   buf_t *buf_rc4;              /* buf for crypto */
-   buf_t *buf_flz;              /* buf for fastlz */
+   buf_t *buf_crypto;           /* buf for crypto */
+   buf_t *buf_comp;             /* buf for compress */
    lst_t *clients_lst;          /* acitve cilent */
    lst_t *leave_lst;            /* client to leave */
    tmr_timer_t *tm_cleanup;
@@ -136,15 +134,18 @@ _remote_client_create(chann_t *n) {
    c->node = lst_pushl(tun->clients_lst, c);
    mnet_chann_set_bufsize(n, 262144);
    mnet_chann_set_cb(n, _remote_tcpin_cb, c);
-   cprng_random(c->crypt_salt, 32);
+   cprng_random(c->crypt_salt, 32);   
    /* chacha20 */
-   chacha20_ctx_init(&c->enc);
-   chacha20_key_setup(&c->enc, "01234567890123456789012345678901", 32);
-   chacha20_iv_setup(&c->enc, "01234567", 8);
+   _init_hash_key(&c->enc, &tun->conf);
+   _init_hash_key(&c->dec, &tun->conf);
+   
+   /* chacha20_ctx_init(&c->enc); */
+   /* chacha20_key_setup(&c->enc, "01234567890123456789012345678901", 32); */
+   /* chacha20_iv_setup(&c->enc, "01234567", 8); */
 
-   chacha20_ctx_init(&c->dec);
-   chacha20_key_setup(&c->dec, "01234567890123456789012345678901", 32);
-   chacha20_iv_setup(&c->dec, "01234567", 8);
+   /* chacha20_ctx_init(&c->dec); */
+   /* chacha20_key_setup(&c->dec, "01234567890123456789012345678901", 32); */
+   /* chacha20_iv_setup(&c->dec, "01234567", 8); */
    return c;
 }
 
@@ -265,8 +266,8 @@ static int
 _remote_send_front_data(tun_remote_client_t *c, unsigned char *buf, u16 buf_len) {
    tun_remote_t *tun = _tun_remote();
 
-   if (tun->conf.crypto_rc4) {
-      u8* rbuf = (u8*)buf_addr(tun->buf_rc4,0);
+   if (tun->conf.crypto) {
+      u8* rbuf = (u8*)buf_addr(tun->buf_crypto,0);
       const int base = TUNNEL_CMD_CONST_DATA_LEN_OFFSET;
 
       chacha20_xor(&c->enc, &buf[base], &rbuf[base], buf_len - base);
@@ -287,8 +288,8 @@ _remote_recv_front_data(tun_remote_client_t *c, buf_t *b) {
    u8 *buf = (u8*)buf_addr(b,0);
    int buf_len = buf_buffered(b);
 
-   if (tun->conf.crypto_rc4) {
-      u8 *rbuf = (u8*)buf_addr(tun->buf_rc4, 0);
+   if (tun->conf.crypto) {
+      u8 *rbuf = (u8*)buf_addr(tun->buf_crypto, 0);
       const int base = TUNNEL_CMD_CONST_DATA_LEN_OFFSET;
 
       chacha20_xor(&c->dec, &buf[base], &rbuf[base], buf_len - base);
@@ -300,9 +301,9 @@ _remote_recv_front_data(tun_remote_client_t *c, buf_t *b) {
    if (tunnel_cmd_head_cmd(buf, 0, 0) == TUNNEL_CMD_DATA_COMPRESSED) {
       const int hlen = TUNNEL_CMD_CONST_HEADER_LEN;
 
-      uint8_t *fbuf = (uint8_t*)buf_addr(tun->buf_flz, 0);
+      uint8_t *fbuf = (uint8_t*)buf_addr(tun->buf_comp, 0);
       int flen = tun_decompress(&buf[hlen], buf_len-hlen,
-                                &fbuf[hlen], buf_len(tun->buf_flz)-hlen);
+                                &fbuf[hlen], buf_len(tun->buf_comp)-hlen);
 
       memcpy(fbuf, buf, hlen);
 
@@ -567,7 +568,7 @@ _remote_tcpin_cb(chann_msg_t *e) {
 
 static inline int
 _remote_buf_available(buf_t *b) {
-   return (buf_available(b) - RC4_CRYPTO_OCCUPY); /* keep space for RC4 crypto */
+   return buf_available(b);
 }
 
 void
@@ -588,12 +589,12 @@ _remote_tcpout_cb(chann_msg_t *e) {
          unsigned char *data = buf_addr(ob,0);
          u16 data_len = buf_buffered(ob);
 
-         // try compress data with fastlz
+         // try compress data
          tun_remote_t *tun = _tun_remote();
-         const int fastlz = tun->conf.fastlz;
-         if (fastlz && data_len>(hlen+TUNNEL_CHANN_FASTLZ_MIN_LEN)) {
-            uint8_t *fbuf = buf_addr(tun->buf_flz, 0);
-            int flen = tun_compress(fastlz, &data[hlen], data_len-hlen, &fbuf[hlen]);
+         const int comp = tun->conf.compress;
+         if (comp && data_len>(hlen+TUNNEL_CHANN_FASTLZ_MIN_LEN)) {
+            uint8_t *fbuf = buf_addr(tun->buf_comp, 0);
+            int flen = tun_compress(comp, &data[hlen], data_len-hlen, &fbuf[hlen]);
 
             if (flen < data_len-hlen) {
                data = fbuf;
@@ -661,9 +662,9 @@ tunnel_remote_open(tunnel_config_t *conf) {
          exit(1);
       }
 
-      tun->buf_rc4 = buf_create(TUNNEL_CHANN_BUF_SIZE);
-      tun->buf_flz = buf_create(TUNNEL_CHANN_BUF_SIZE);
-      assert(tun->buf_rc4 && tun->buf_flz);
+      tun->buf_crypto = buf_create(TUNNEL_CHANN_BUF_SIZE);
+      tun->buf_comp = buf_create(TUNNEL_CHANN_BUF_SIZE);
+      assert(tun->buf_crypto && tun->buf_comp);
 
       tun->running = 1;
 
@@ -775,7 +776,6 @@ main(int argc, char *argv[]) {
       tmr_t *tmr = tmr_create_lst();
 
       _remote_update_ti();
-      tun->key = _init_hash_key(&conf);
 
       tun->tm_cleanup = tmr_add(tmr, tun->ti, 4, 1, tun, _remote_tmr_callback);
       tmr_add(tmr, tun->ti, 60, 1, tun, _remote_tmr_callback);

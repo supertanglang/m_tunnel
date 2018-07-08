@@ -33,10 +33,9 @@
 #include "m_mem.h"
 #include "m_buf.h"
 #include "m_list.h"
-#include "m_rc4.h"
-#include "m_chacha20.h"
 #include "m_timer.h"
 #include "m_sha256.h"
+#include "m_chacha20.h"
 #include "utils_debug.h"
 
 #include "mnet_core.h"
@@ -74,7 +73,7 @@ typedef enum {
 typedef struct {
    local_chann_state_t state;
    u16 chann_id;                /* chann id in slots  */
-   u16 magic;                    /* unique chann magic in chann slots */
+   u16 magic;                   /* unique chann magic in chann slots */
    chann_t *tcpin;              /* for input */
    buf_t *bufin;                /* buf for input */
    lst_node_t *node;            /* node in active_list */
@@ -84,7 +83,6 @@ typedef struct {
 typedef struct {
    int running;                 /* running status */
    time_t ti;
-   uint64_t key;
    int data_mark;
    u16 chann_idx;
    u16 magic_code;
@@ -94,8 +92,8 @@ typedef struct {
    chann_t *tcpin;               /* tcp for listen */
    chann_t *tcpout;              /* tcp for forward */
    buf_t *bufout;                /* buf for forward */
-   buf_t *buf_rc4;               /* buf for crypto */
-   buf_t *buf_flz;               /* buf for fastlz */
+   buf_t *buf_crypto;            /* buf for crypto */
+   buf_t *buf_comp;              /* buf for compress */
    lst_t *active_lst;            /* active chann list */
    lst_t *free_lst;              /* free chann list */
    uint64_t rcv_comp;            /* bytes compressed */
@@ -208,8 +206,8 @@ static int
 _front_send_remote_data(unsigned char *buf, u16 buf_len) {
    tun_local_t *tun = _tun_local();
 
-   if (tun->conf.crypto_rc4) {
-      u8 *rbuf = (u8*)buf_addr(tun->buf_rc4, 0);
+   if (tun->conf.crypto) {
+      u8 *rbuf = (u8*)buf_addr(tun->buf_crypto, 0);
       const int base = TUNNEL_CMD_CONST_DATA_LEN_OFFSET;
 
       chacha20_xor(&tun->enc, &buf[base], &rbuf[base], buf_len - base);
@@ -230,8 +228,8 @@ _front_recv_remote_data(buf_t *b) {
    u8 *buf = (u8*)buf_addr(b,0);
    int buf_len = buf_buffered(b);
 
-   if (tun->conf.crypto_rc4) {
-      u8 *rbuf = (u8*)buf_addr(tun->buf_rc4, 0);
+   if (tun->conf.crypto) {
+      u8 *rbuf = (u8*)buf_addr(tun->buf_crypto, 0);
       const int base = TUNNEL_CMD_CONST_DATA_LEN_OFFSET;
 
       chacha20_xor(&tun->dec, &buf[base], &rbuf[base], buf_len - base);
@@ -243,9 +241,9 @@ _front_recv_remote_data(buf_t *b) {
    if (tunnel_cmd_head_cmd(buf, 0, 0) == TUNNEL_CMD_DATA_COMPRESSED) {
       const int hlen = TUNNEL_CMD_CONST_HEADER_LEN;
 
-      uint8_t *fbuf = (uint8_t*)buf_addr(tun->buf_flz, 0);
+      uint8_t *fbuf = (uint8_t*)buf_addr(tun->buf_comp, 0);
       int flen = tun_decompress(&buf[hlen], buf_len-hlen,
-                                &fbuf[hlen], buf_len(tun->buf_flz)-hlen);
+                                &fbuf[hlen], buf_len(tun->buf_comp)-hlen);
 
       memcpy(fbuf, buf, hlen);
       tun->rcv_comp += (flen + hlen - buf_len);
@@ -312,7 +310,7 @@ _front_cmd_close(tun_local_chann_t *c) {
 
 static inline int
 _local_buf_available(buf_t *b) {
-   return (buf_available(b) - RC4_CRYPTO_OCCUPY); /* keep space for RC4 crypto */
+   return buf_available(b);
 }
 
 static inline char*
@@ -346,11 +344,11 @@ _local_chann_tcpin_cb_front(chann_msg_t *e) {
          uint8_t *data = buf_addr(ib,0);
          u16 data_len = buf_buffered(ib);
 
-         // try compress data with fastlz
-         const int fastlz = tun->conf.fastlz;
-         if (fastlz && data_len>(hlen+TUNNEL_CHANN_FASTLZ_MIN_LEN)) {
-            uint8_t *fbuf = buf_addr(tun->buf_flz, 0);
-            int flen = tun_compress(fastlz, &data[hlen], data_len-hlen, &fbuf[hlen]);
+         // try compress data
+         const int comp = tun->conf.compress;
+         if (comp && data_len>(hlen+TUNNEL_CHANN_FASTLZ_MIN_LEN)) {
+            uint8_t *fbuf = buf_addr(tun->buf_comp, 0);
+            int flen = tun_compress(comp, &data[hlen], data_len-hlen, &fbuf[hlen]);
 
             if (flen < data_len-hlen) {
                tun->snd_comp += (data_len - hlen - flen);
@@ -648,10 +646,10 @@ tunnel_local_open(tunnel_config_t *conf) {
       mnet_chann_listen(tun->tcpin, conf->local_ipaddr, conf->local_port, 1);
 
       tun->bufout = buf_create(TUNNEL_CHANN_BUF_SIZE);
-      tun->buf_rc4 = buf_create(TUNNEL_CHANN_BUF_SIZE);
-      tun->buf_flz = buf_create(TUNNEL_CHANN_BUF_SIZE);
+      tun->buf_crypto = buf_create(TUNNEL_CHANN_BUF_SIZE);
+      tun->buf_comp = buf_create(TUNNEL_CHANN_BUF_SIZE);
 
-      assert(tun->bufout && tun->buf_rc4 && tun->buf_flz);
+      assert(tun->bufout && tun->buf_crypto && tun->buf_comp);
 
       tun->tcpout = mnet_chann_open(CHANN_TYPE_STREAM);
       mnet_chann_set_bufsize(tun->tcpout, 131072);
@@ -745,16 +743,17 @@ main(int argc, char *argv[]) {
       _local_update_ti();
       tmr_add(tmr, tun->ti, 30, 1, tun, _local_tmr_callback);
 
-      tun->key = _init_hash_key(&conf);
+      _init_hash_key(&tun->enc, &conf);
+      _init_hash_key(&tun->dec, &conf);
 
       /* chacha20 */
-      chacha20_ctx_init(&tun->enc);
-      chacha20_key_setup(&tun->enc, "01234567890123456789012345678901", 32);
-      chacha20_iv_setup(&tun->enc, "01234567", 8);
+      /* chacha20_ctx_init(&tun->enc); */
+      /* chacha20_key_setup(&tun->enc, "01234567890123456789012345678901", 32); */
+      /* chacha20_iv_setup(&tun->enc, "01234567", 8); */
 
-      chacha20_ctx_init(&tun->dec);
-      chacha20_key_setup(&tun->dec, "01234567890123456789012345678901", 32);
-      chacha20_iv_setup(&tun->dec, "01234567", 8);
+      /* chacha20_ctx_init(&tun->dec); */
+      /* chacha20_key_setup(&tun->dec, "01234567890123456789012345678901", 32); */
+      /* chacha20_iv_setup(&tun->dec, "01234567", 8); */
       
 
       for (int i=0;;i++) {

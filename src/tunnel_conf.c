@@ -15,9 +15,6 @@
 #include "utils_args.h"
 #include "utils_str.h"
 
-#include "m_sha256.h"
-#include "m_rc4.h"
-
 #include "mnet_core.h"
 #include "tunnel_conf.h"
 
@@ -84,22 +81,22 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
       goto fail;      
    }
 
-   // rc4 switch
-   value = utils_args_string(ag, "-rc4");
+   // chacha20 switch
+   value = utils_args_string(ag, "-crypto");
    if (value && strncmp(value, "0", 1)==0) {
-      conf->crypto_rc4 = 0;
+      conf->crypto = 0;
    } else {
-      conf->crypto_rc4 = 1;
+      conf->crypto = 1;
    }
 
    // fastlz
-   value = utils_args_string(ag, "-fastlz");
+   value = utils_args_string(ag, "-compress");
    if (value && strncmp(value, "0", 1)==0) {
-      conf->fastlz = 0;         /* disable */
+      conf->compress = 0;         /* disable */
    } else if (value && strncmp(value, "1", 1)==0) {
-      conf->fastlz = 1;         /* level 1 */
+      conf->compress = 1;         /* level 1 */
    } else {
-      conf->fastlz = 2;         /* level 2 */
+      conf->compress = 2;         /* level 2 */
    }
 
 
@@ -120,8 +117,8 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
          { " -u \t username (256bits)" },
          { " -p \t password (256bits)" },
          { " -d \t debug output file, default 'stdout'" },
-         { " -rc4 \t default '1', '0' to disable" },
-         { " -fastlz \t fastlz level, default '2', '0' to disable" },
+         { " -crypto \t default '1', '0' to disable" },
+         { " -compress \t default '2', '0' to disable" },
          { NULL },
       };
       fprintf(stderr, "usage: %s [options]\nAvailable options are:\n", argv[0]);
@@ -129,11 +126,11 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
          fprintf(stderr, "%s\n", err[i].string);
       }
    } else {
-      printf("tun: %s, local->%s:%d, remote->%s:%d, rc4->%d, fastlz->%d\n",
+      printf("tun: %s, local->%s:%d, remote->%s:%d, crypto->%d, compress->%d\n",
              conf->dbg_fname,
              conf->local_ipaddr, conf->local_port,
              conf->remote_ipaddr, conf->remote_port,
-             conf->crypto_rc4, conf->fastlz);
+             conf->crypto, conf->compress);
    }
 
    return ret;
@@ -143,12 +140,11 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
 /* helper
  */
 
-uint64_t
-_init_hash_key(tunnel_config_t *conf) {
-   unsigned char buf[SHA256_HASH_BYTES + SHA256_HASH_BYTES];
-   memcpy(buf, conf->username, SHA256_HASH_BYTES);
-   memcpy(&buf[SHA256_HASH_BYTES], conf->password, SHA256_HASH_BYTES);
-   return rc4_hash_key((const char*)buf, 2*SHA256_HASH_BYTES);
+void
+_init_hash_key(chacha20_ctx_t *ctx, tunnel_config_t *conf) {
+   chacha20_ctx_init(ctx);
+   chacha20_key_setup(ctx, conf->password, SHA256_HASH_BYTES);
+   chacha20_iv_setup(ctx, conf->username, 8);
 }
 
 /* assume all SHA256_HASH_BYTES */

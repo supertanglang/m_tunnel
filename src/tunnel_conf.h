@@ -9,6 +9,7 @@
 #define TUNNEL_CONF_H
 
 #include "m_sha256.h"
+#include "m_chacha20.h"
 
 typedef struct {
    char dbg_fname[32];
@@ -18,8 +19,8 @@ typedef struct {
    char remote_ipaddr[16];
    char username[SHA256_HASH_BYTES];
    char password[SHA256_HASH_BYTES];
-   int crypto_rc4;              /* 0 to disble, default enable */
-   int fastlz;                  /* 0 to disable, default 2 */
+   int crypto;                  /* 0 to disable, default 1 */
+   int compress;                /* 0 to disable, default 2 */
 } tunnel_config_t;
 
 static inline int _min_of(int a, int b) {
@@ -31,7 +32,7 @@ int tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]);
 /* helper
  */
 
-uint64_t _init_hash_key(tunnel_config_t *conf);
+void _init_hash_key(chacha20_ctx_t*, tunnel_config_t*);
 
 void _sha256_salt(void *data, void *salt, void *hash);
 
