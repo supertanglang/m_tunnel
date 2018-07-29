@@ -19,13 +19,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\vendor\m_foundation\src\crypto\m_rc4.c">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="..\vendor\m_foundation\src\model\m_buf.c">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="..\vendor\m_foundation\src\model\m_debug.c">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="..\vendor\m_foundation\src\model\m_list.c">
@@ -70,11 +64,21 @@
     <ClCompile Include="..\src\tunnel_conf.c">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="..\vendor\m_foundation\src\crypto\m_chacha20.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="..\vendor\m_foundation\src\crypto\m_sha256.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="..\vendor\m_foundation\src\utils\utils_debug.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="..\vendor\fastlz\fastlz.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\vendor\m_foundation\src\crypto\m_rc4.h" />
     <ClInclude Include="..\vendor\m_foundation\src\model\m_buf.h" />
-    <ClInclude Include="..\vendor\m_foundation\src\model\m_debug.h" />
     <ClInclude Include="..\vendor\m_foundation\src\model\m_list.h" />
     <ClInclude Include="..\vendor\m_foundation\src\model\m_mem.h" />
     <ClInclude Include="..\vendor\m_foundation\src\plat\plat_os.h" />
@@ -90,5 +94,11 @@
     <ClInclude Include="..\vendor\m_foundation\src\model\m_timer.h" />
     <ClInclude Include="..\src\mfoundation_import.h" />
     <ClInclude Include="..\src\tunnel_conf.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\crypto\m_chacha20.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\crypto\m_chacha20_priv.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\crypto\m_sha256.h" />
+    <ClInclude Include="..\vendor\m_foundation\src\utils\utils_debug.h" />
+    <ClInclude Include="..\src\tunnel_compress.h" />
+    <ClInclude Include="..\vendor\fastlz\fastlz.h" />
   </ItemGroup>
 </Project>

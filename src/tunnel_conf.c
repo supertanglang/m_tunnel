@@ -112,7 +112,9 @@ tunnel_conf_get_values(tunnel_config_t *conf, int argc, char *argv[]) {
          char *string;
       };
       struct s_error err[] = {
+#ifdef TUN_LOCAL
          { " -l \t local ipport, '127.0.0.1:1234'" },
+#endif
          { " -r \t remote ipport" },
          { " -u \t username (256bits)" },
          { " -p \t password (256bits)" },
@@ -153,7 +155,7 @@ _sha256_salt(void *data, void *salt, void *hash) {
    unsigned char buf[SHA256_HASH_BYTES + SHA256_HASH_BYTES];
    memcpy(buf, data, SHA256_HASH_BYTES);
    memcpy(&buf[SHA256_HASH_BYTES], salt, SHA256_HASH_BYTES);
-   sha256_once((const void*)buf, (size_t)(2*SHA256_HASH_BYTES), hash);
+   sha256_once((const void*)buf, (size_t)(2*SHA256_HASH_BYTES), (uint8_t*)hash);
 }
 
 void
