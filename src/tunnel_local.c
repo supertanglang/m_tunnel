@@ -573,12 +573,18 @@ _local_tcpout_cb_front(chann_msg_t *e) {
    else if (e->event == CHANN_EVENT_CONNECTED) {
       
       /* get salt from server */
-      int ret = 0;
+      int len=0, timeout=0;
       do {
-         mtime_sleep(1);
-         ret += mnet_chann_recv(e->n, tun->crypt_salt, SHA256_HASH_BYTES - ret);
-         //_print_hex(tun->crypt_salt, 32);
-      } while (ret < SHA256_HASH_BYTES);
+         int v = mnet_chann_recv(e->n, tun->crypt_salt, SHA256_HASH_BYTES - len);
+         if (v > 0) {
+            len += v;
+            mtime_sleep(1);
+         } else {
+            _info("waiting server salt len %d, timeout %d ...\n", v, timeout);
+            mtime_sleep(1000);
+            timeout += 1;            
+         }
+      } while (len < SHA256_HASH_BYTES);
 
       
       /* prepare auth data */
@@ -688,6 +694,10 @@ static void
 _local_tmr_callback(tmr_timer_t *tm, void *opaque) {
    tun_local_t *tun = (tun_local_t*)opaque;
 
+   if (tun->state != LOCAL_FRONT_STATE_AUTHORIZED) {
+      return;
+   }
+
    if (tun->data_mark <= 0) {
       _local_send_echo(tun);
    }
@@ -743,18 +753,9 @@ main(int argc, char *argv[]) {
       _local_update_ti();
       tmr_add(tmr, tun->ti, 30, 1, tun, _local_tmr_callback);
 
+      /* chacha20 */
       _init_hash_key(&tun->enc, &conf);
       _init_hash_key(&tun->dec, &conf);
-
-      /* chacha20 */
-      /* chacha20_ctx_init(&tun->enc); */
-      /* chacha20_key_setup(&tun->enc, "01234567890123456789012345678901", 32); */
-      /* chacha20_iv_setup(&tun->enc, "01234567", 8); */
-
-      /* chacha20_ctx_init(&tun->dec); */
-      /* chacha20_key_setup(&tun->dec, "01234567890123456789012345678901", 32); */
-      /* chacha20_iv_setup(&tun->dec, "01234567", 8); */
-      
 
       for (int i=0;;i++) {
 

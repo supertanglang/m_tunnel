@@ -134,18 +134,14 @@ _remote_client_create(chann_t *n) {
    c->node = lst_pushl(tun->clients_lst, c);
    mnet_chann_set_bufsize(n, 262144);
    mnet_chann_set_cb(n, _remote_tcpin_cb, c);
-   cprng_random(c->crypt_salt, 32);   
+   
+   _info("accept client, require cprng\n");   
+   cprng_random(c->crypt_salt, 32);
+   _info("got cprng\n");
+   
    /* chacha20 */
    _init_hash_key(&c->enc, &tun->conf);
    _init_hash_key(&c->dec, &tun->conf);
-   
-   /* chacha20_ctx_init(&c->enc); */
-   /* chacha20_key_setup(&c->enc, "01234567890123456789012345678901", 32); */
-   /* chacha20_iv_setup(&c->enc, "01234567", 8); */
-
-   /* chacha20_ctx_init(&c->dec); */
-   /* chacha20_key_setup(&c->dec, "01234567890123456789012345678901", 32); */
-   /* chacha20_iv_setup(&c->dec, "01234567", 8); */
    return c;
 }
 
