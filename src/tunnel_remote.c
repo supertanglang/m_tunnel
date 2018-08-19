@@ -41,6 +41,7 @@
 
 typedef enum {
    REMOTE_CLIENT_STATE_NONE = 0,
+   REMOTE_CLIENT_STATE_SALT,    /* send salt, begin cryto */
    REMOTE_CLIENT_STATE_ACCEPT,  /* AUTH successful */
 } remote_client_state_t;
 
@@ -137,11 +138,7 @@ _remote_client_create(chann_t *n) {
    
    _info("accept client, require cprng\n");   
    cprng_random(c->crypt_salt, 32);
-   _info("got cprng\n");
-   
-   /* chacha20 */
-   _init_hash_key(&c->enc, &tun->conf);
-   _init_hash_key(&c->dec, &tun->conf);
+   _info("got cprng\n");   
    return c;
 }
 
@@ -438,8 +435,10 @@ _remote_tcpin_cb(chann_msg_t *e) {
          }
 
          /* decode data */
-         if (_remote_recv_front_data(c, ib) <= 0) {
-            goto reset_buffer;
+         if (c->state >= REMOTE_CLIENT_STATE_ACCEPT) {
+            if (_remote_recv_front_data(c, ib) <= 0) {
+               goto reset_buffer;
+            }
          }
 
          /* _verbose("%d, %d\n", tcmd.data_len, buf_buffered(ib)); */
@@ -512,11 +511,26 @@ _remote_tcpin_cb(chann_msg_t *e) {
          else {
             if (tcmd.cmd == TUNNEL_CMD_AUTH) {
                unsigned char data[64] = {0};
-               u16 data_len = TUNNEL_CMD_CONST_HEADER_LEN + 1;
-
                int auth_type = tcmd.payload[0];
-            
+
                if (auth_type == 1) {
+                  u16 data_len = TUNNEL_CMD_CONST_HEADER_LEN + 33;
+
+                  data[TUNNEL_CMD_CONST_HEADER_LEN] = 1; /* auth type */
+                  memcpy(&data[TUNNEL_CMD_CONST_HEADER_LEN + 1], c->crypt_salt, 32);
+
+                  tunnel_cmd_data_len(data, 1, data_len);
+                  tunnel_cmd_chann_id(data, 1, 0);
+                  tunnel_cmd_chann_magic(data, 1, 0);
+                  tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_AUTH);
+
+                  mnet_chann_send(e->n, data, data_len);
+
+                  c->state = REMOTE_CLIENT_STATE_SALT;
+                  _info("(in) send salt to client %p, begin crypto\n", c);
+               }
+               else if (auth_type == 2) {
+                  u16 data_len = TUNNEL_CMD_CONST_HEADER_LEN + 1;
                   char *username = (char*)&tcmd.payload[1];
                   char *passwd = (char*)&tcmd.payload[33];
 
@@ -528,16 +542,22 @@ _remote_tcpin_cb(chann_msg_t *e) {
                   unsigned char uname_hash[SHA256_HASH_BYTES];
                   unsigned char passw_hash[SHA256_HASH_BYTES];
 
-                  tun_remote_t *tun = _tun_remote();                  
+                  tun_remote_t *tun = _tun_remote();
                   _sha256_salt(tun->conf.username, c->crypt_salt, uname_hash);
-                  _sha256_salt(tun->conf.password, c->crypt_salt, passw_hash);                  
+                  _sha256_salt(tun->conf.password, c->crypt_salt, passw_hash);
 
                   if (memcmp(uname_hash, username, SHA256_HASH_BYTES)==0 &&
                       memcmp(passw_hash, passwd, SHA256_HASH_BYTES)==0)
                   {
                      c->state = REMOTE_CLIENT_STATE_ACCEPT;
-                     data[data_len - 1] = 1;
+
+                     /* chacha20 */
+                     _init_hash_key(&c->enc, &tun->conf);
+                     _init_hash_key(&c->dec, &tun->conf);
+                     
+                     data[data_len - 1] = 2; /* auth type */
                      _remote_send_front_data(c, data, data_len);
+                     _info("(in) accept client %p\n", c);
                   }
                   else {
                      data[data_len - 1] = 0;
@@ -545,7 +565,9 @@ _remote_tcpin_cb(chann_msg_t *e) {
                      _remote_client_destroy(c);
                   }
                }
-               _verbose("(in) accept client %p, %d\n", c, auth_type);
+               else {
+                  _err("invalid auth type !\n");
+               }
             }
             else {
                _err("invalid command !\n");
@@ -634,8 +656,7 @@ _remote_listen_cb(chann_msg_t *e) {
    if (e->event == CHANN_EVENT_ACCEPT) {
       tun_remote_t *tun = _tun_remote();
       if (lst_count(tun->clients_lst) < TUNNEL_REMOTE_MAX_CLIENT) {
-         tun_remote_client_t *rc = _remote_client_create(e->r);
-         mnet_chann_send(e->r, rc->crypt_salt, 32);
+         _remote_client_create(e->r);
       } else {
          mnet_chann_close(e->r);
       }

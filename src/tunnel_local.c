@@ -66,7 +66,8 @@ typedef enum {
 /* for mode front */
 typedef enum {
    LOCAL_FRONT_STATE_NONE = 0,        /* have not connect serv */
-   LOCAL_FRONT_STATE_CONNECTED,
+   LOCAL_FRONT_STATE_CONNECTED,       /* connected, require salt */
+   LOCAL_FRONT_STATE_SALT,            /* got salt, begin crypto */
    LOCAL_FRONT_STATE_AUTHORIZED,
 } local_front_state_t;
 
@@ -489,10 +490,12 @@ _local_tcpout_cb_front(chann_msg_t *e) {
             return;
          }
 
-         /* decode data */
-         if (_front_recv_remote_data(ob) <= 0) {
-            _err("(out) fail to decode !\n");
-            goto reset_buffer;
+         if (tun->state >= LOCAL_FRONT_STATE_SALT) {
+            /* decode data */
+            if (_front_recv_remote_data(ob) <= 0) {
+               _err("(out) fail to decode !\n");
+               goto reset_buffer;
+            }
          }
 
          tunnel_cmd_check(ob, &tcmd);
@@ -558,58 +561,73 @@ _local_tcpout_cb_front(chann_msg_t *e) {
          else if (tun->state == LOCAL_FRONT_STATE_CONNECTED) {
             if (tcmd.cmd == TUNNEL_CMD_AUTH) {
                if (tcmd.payload[0] == 1) {
-                  tun->state = LOCAL_FRONT_STATE_AUTHORIZED;
-                  _info("(out) got authority value %d\n", tcmd.payload[0]);
+                  memcpy(tun->crypt_salt, &tcmd.payload[1], 32);
+                  tun->state = LOCAL_FRONT_STATE_SALT;
+
+
+                  /* prepare auth data */
+                  unsigned char data[64] = {0};
+                  memset(data, 0, sizeof(data));
+
+                  int head_len = TUNNEL_CMD_CONST_HEADER_LEN;
+                  u16 data_len = head_len + 1 + 2 * SHA256_HASH_BYTES;
+
+                  tunnel_cmd_data_len(data, 1, data_len);
+                  tunnel_cmd_chann_id(data, 1, 0);
+                  tunnel_cmd_chann_magic(data, 1, 0);
+                  tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_AUTH);
+
+                  data[head_len] = 2; /* auth type */
+
+                  int uname_base = head_len + 1; /* user name */
+                  _sha256_salt(tun->conf.username, tun->crypt_salt, &data[uname_base]);
+
+                  int passw_base = uname_base + SHA256_HASH_BYTES; /* user password */
+                  _sha256_salt(tun->conf.password, tun->crypt_salt, &data[passw_base]);
+
+                  mnet_chann_send(e->n, data, data_len);
+
+                  /* init chacha20 */
+                  _init_hash_key(&tun->enc, &tun->conf);
+                  _init_hash_key(&tun->dec, &tun->conf);
+                  
+                  _info("(out) got salt, send auth, begin cryto ...\n");
+               }
+               else {
+                  _err("(out) invalid auth state !!!\n");
                }
             }
          }
+         else if (tun->state == LOCAL_FRONT_STATE_SALT) {
+            if (tcmd.cmd == TUNNEL_CMD_AUTH && tcmd.payload[0] == 2) {
+               tun->state = LOCAL_FRONT_STATE_AUTHORIZED;
+               _info("(out) got authority value %d\n", tcmd.payload[0]);
+            }
+            else {
+               _err("(out) invalid auth state !!!\n");
+            }
+         }
          else {
-            _err("invalid tun state !\n");
+            _err("invalid tun state %d !\n", tun->state);
          }
         reset_buffer:
          buf_reset(ob);
       }
    }
    else if (e->event == CHANN_EVENT_CONNECTED) {
-      
-      /* get salt from server */
-      int len=0, timeout=0;
-      do {
-         int v = mnet_chann_recv(e->n, tun->crypt_salt, SHA256_HASH_BYTES - len);
-         if (v > 0) {
-            len += v;
-            mtime_sleep(1);
-         } else {
-            _info("waiting server salt len %d, timeout %d ...\n", v, timeout);
-            mtime_sleep(1000);
-            timeout += 1;            
-         }
-      } while (len < SHA256_HASH_BYTES);
-
-      
-      /* prepare auth data */
       unsigned char data[64] = {0};
-      memset(data, 0, sizeof(data));
+      u16 data_len = TUNNEL_CMD_CONST_HEADER_LEN + 1;
 
-      int head_len = TUNNEL_CMD_CONST_HEADER_LEN;
-      u16 data_len = head_len + 1 + 2 * SHA256_HASH_BYTES;
+      data[TUNNEL_CMD_CONST_HEADER_LEN] = 1; /* auth type */
 
       tunnel_cmd_data_len(data, 1, data_len);
       tunnel_cmd_chann_id(data, 1, 0);
       tunnel_cmd_chann_magic(data, 1, 0);
       tunnel_cmd_head_cmd(data, 1, TUNNEL_CMD_AUTH);
 
-      data[head_len] = 1;       /* auth type */
+      mnet_chann_send(e->n, data, data_len);
 
-      int uname_base = head_len + 1; /* user name */
-      _sha256_salt(tun->conf.username, tun->crypt_salt, &data[uname_base]);
-
-      int passw_base = uname_base + SHA256_HASH_BYTES; /* user password */
-      _sha256_salt(tun->conf.password, tun->crypt_salt, &data[passw_base]);
-
-      _front_send_remote_data(data, data_len);
-
-      _verbose("(out) connected, send auth request\n");
+      _info("(out) connected, require salt ...\n");
       tun->state = LOCAL_FRONT_STATE_CONNECTED;
    }
    else if (e->event == CHANN_EVENT_DISCONNECT)
@@ -749,13 +767,9 @@ main(int argc, char *argv[]) {
    if (tunnel_local_open(&conf) > 0) {
       tun_local_t *tun = _tun_local();
       tmr_t *tmr = tmr_create_lst();
-
+      
       _local_update_ti();
       tmr_add(tmr, tun->ti, 30, 1, tun, _local_tmr_callback);
-
-      /* chacha20 */
-      _init_hash_key(&tun->enc, &conf);
-      _init_hash_key(&tun->dec, &conf);
 
       for (int i=0;;i++) {
 

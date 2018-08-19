@@ -53,8 +53,10 @@ enum {
    /* REQUEST : AUTH_TYPE | USER_NAME | PASSWORD_PAYLOAD
                 1 byte    | 32 byte   | 32 bytes
 
-      RESPONSE: 1/0 (SUCCESS/FAIL)
-                1 byte
+      RESPONSE: AUTH_TYPE | CRYPTO_SALT
+                1 byte    | 32 byte
+
+      NOTE    : AUTH_TYPE 0:fail 1:req salt 2:USER_NAME PASS_WORD
     */
 
    TUNNEL_CMD_CONNECT,
