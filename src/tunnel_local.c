@@ -566,7 +566,7 @@ _local_tcpout_cb_front(chann_msg_t *e) {
 
 
                   /* prepare auth data */
-                  unsigned char data[64] = {0};
+                  unsigned char data[128] = {0};
                   memset(data, 0, sizeof(data));
 
                   int head_len = TUNNEL_CMD_CONST_HEADER_LEN;
