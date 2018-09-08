@@ -14,9 +14,9 @@
 
 # About
 
-m_tunnel was a secure TCP tunnel with SOCKS5 proxy interface, action like shadowsocks.
-It's lightweight and play well with [m_kcptun](https://github.com/lalawue/m_kcptun) or
-[kcptun](https://github.com/xtaci/kcptun).
+m_tunnel was a secure TCP tunnel with SOCKS5 proxy interface, action
+like shadowsocks.It's lightweight and play well with TCP
+[BBR](https://github.com/google/bbr) congestion control algorithm.
 
 only support IPV4, under Linux/MacOS/FreeBSD/Windows, base on [m_net](https://github.com/lalawue/m_net),
 [m_foundation](https://github.com/lalawue/m_foundation), [m_dnscnt](https://github.com/lalawue/m_dnscnt).
