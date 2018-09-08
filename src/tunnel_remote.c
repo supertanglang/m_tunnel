@@ -15,7 +15,6 @@
 #include "m_mem.h"
 #include "m_list.h"
 #include "m_timer.h"
-#include "m_cprng.h"
 #include "m_sha256.h"
 #include "m_chacha20.h"
 #include "utils_debug.h"
@@ -135,10 +134,24 @@ _remote_client_create(chann_t *n) {
    c->node = lst_pushl(tun->clients_lst, c);
    mnet_chann_set_bufsize(n, 262144);
    mnet_chann_set_cb(n, _remote_tcpin_cb, c);
-   
-   _info("accept client, require cprng\n");   
-   cprng_random(c->crypt_salt, 32);
-   _info("got cprng\n");   
+
+   {
+      _info("accept client, generate CPRNG\n");
+      buf_t *b = buf_create(256);
+      buf_fmt(b, "%p", n);
+      buf_fmt(b, "%p", c->bufin);
+      buf_fmt(b, "%p", c->active_lst);
+      buf_fmt(b, "%p", c->free_lst);
+      buf_fmt(b, "%p", c->want_lst);
+      buf_fmt(b, "%p", c->node);
+      buf_fmt(b, "%x", tun->ti);
+      while (buf_available(b) > 0) {
+         buf_fmt(b, "%x", random());
+      }
+      sha256_once(buf_addr(b,0), buf_len(b), c->crypt_salt);
+      buf_destroy(b);
+   }
+
    return c;
 }
 
@@ -579,7 +592,7 @@ _remote_tcpin_cb(chann_msg_t *e) {
    }
    else if (e->event == CHANN_EVENT_DISCONNECT)
    {
-      _verbose("client %p close event !\n", c);
+      _info("client %p close event !\n", c);
       lst_pushl(_tun_remote()->leave_lst, c);
    }
 }
